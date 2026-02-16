@@ -75,6 +75,7 @@ export default function HotAndCold() {
   const [error, setError] = useState("");
   const [timeUntilReset, setTimeUntilReset] = useState(getTimeUntilReset);
   const [dailyInfo, setDailyInfo] = useState(null);
+  const [hintRevealed, setHintRevealed] = useState(false);
 
   const analytics = useGameAnalytics(GAME_ID, 0);
 
@@ -120,6 +121,7 @@ export default function HotAndCold() {
         setArticles(data.articles || []);
         setDailyInfo({ date: data.date, category: data.category });
         setGameState("playing");
+        setHintRevealed(false);
         analytics.logStart({ category: data.category });
 
         const stored = localStorage.getItem(DAILY_STORAGE_KEY);
@@ -243,6 +245,25 @@ export default function HotAndCold() {
       </div>
 
       <div className="max-w-2xl mx-auto space-y-6">
+        {articles?.[0] && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm">
+            <h2 className="text-sm font-black text-slate-900 mb-1">
+              Today&apos;s article
+            </h2>
+            <p className="text-xs text-slate-500 mb-2">
+              The daily word is chosen from this story.
+            </p>
+            <a
+              href={articles[0].url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+            >
+              {articles[0].title}
+            </a>
+          </div>
+        )}
+
         <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md">
@@ -300,6 +321,34 @@ export default function HotAndCold() {
                 </>
               )}
             </div>
+            {targetWord && (
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-xs text-slate-500">
+                  Today&apos;s word is a single word from recent{" "}
+                  {dailyInfo?.category ? dailyInfo.category.toLowerCase() : "coverage"}
+                  .
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHintRevealed(true)}
+                  disabled={hintRevealed}
+                  className="self-start px-3 py-2 rounded-lg border border-dashed border-slate-300 text-xs font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-700 disabled:opacity-60 disabled:cursor-not-allowed bg-white"
+                >
+                  {hintRevealed ? "Hint revealed" : "Get a hint"}
+                </button>
+              </div>
+            )}
+            {hintRevealed && targetWord && (
+              <p className="mt-2 text-xs text-slate-600">
+                Hint: the word is{" "}
+                <span className="font-bold">{targetWord.length}</span> letters long and
+                starts with{" "}
+                <span className="font-bold">
+                  &ldquo;{targetWord[0].toUpperCase()}&rdquo;
+                </span>
+                .
+              </p>
+            )}
           </div>
         </div>
 
@@ -309,9 +358,8 @@ export default function HotAndCold() {
               Your guesses
             </h3>
             <ul className="space-y-2 text-sm">
-              {history
-                .slice()
-                .reverse()
+              {[...history]
+                .sort((a, b) => b.similarity - a.similarity)
                 .map((entry, index) => (
                   <li
                     key={`${entry.guess}-${index}`}

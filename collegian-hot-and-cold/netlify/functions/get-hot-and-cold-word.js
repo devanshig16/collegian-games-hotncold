@@ -87,19 +87,52 @@ const STOPWORDS = new Set([
   "whose",
   "why",
   "how",
-  "Penn",
-  "State",
+  // PSU-specific / publication words
   "penn",
   "state",
-  "student",
-  "students",
+  "pennsylvania",
   "university",
   "college",
   "campus",
+  "students",
+  "student",
   "collegian",
   "daily",
   "psu",
+  "lions",
+  "nittany",
+  // very common verbs / fillers
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "do",
+  "did",
+  "does",
+  "has",
+  "have",
+  "had",
+  "says",
   "said",
+  "told",
+  "report",
+  "reports",
+  "reported",
+  // generic nouns / time words
+  "year",
+  "years",
+  "time",
+  "day",
+  "days",
+  "week",
+  "weeks",
+  "people",
+  "person",
+  "things",
+  "way",
 ]);
 
 const tokenize = (text) => {
@@ -141,7 +174,7 @@ exports.handler = async (event) => {
     const queryForCategory = async (cat) => {
       if (hasCategoryColumn) {
         const { rows } = await client.query(
-          `SELECT guid as id, title, url, content as body
+          `SELECT guid as id, title, url, content as body, pub_date
            FROM articles
            WHERE category = $1 AND pub_date >= NOW() - INTERVAL '24 hours'`,
           [cat]
@@ -150,7 +183,7 @@ exports.handler = async (event) => {
       }
       // No category column: use all articles from last 24 hours
       const { rows } = await client.query(
-        `SELECT guid as id, title, url, content as body
+        `SELECT guid as id, title, url, content as body, pub_date
          FROM articles
          WHERE pub_date >= NOW() - INTERVAL '24 hours'`
       );
@@ -181,29 +214,45 @@ exports.handler = async (event) => {
       };
     }
 
-    const freq = new Map();
+    const totalArticles = articles.length;
+
+    // Helper: determine if a token is a good candidate for the target word
+    const isGoodToken = (token) => {
+      if (!token) return false;
+      if (STOPWORDS.has(token)) return false;
+      if (!/^[a-z]+$/.test(token)) return false; // letters only
+      if (token.length < 4 || token.length > 12) return false; // avoid too short/long
+      return true;
+    };
+
+    // Precompute, for each article, its filtered tokens and global article counts
+    const articleTokens = new Map(); // id -> array of filtered tokens (with duplicates)
+    const globalArticleCount = new Map(); // token -> in how many articles it appears
 
     for (const article of articles) {
       const text = `${article.title || ""} ${article.body || ""}`;
-      const tokens = tokenize(text);
+      const rawTokens = tokenize(text);
+      const filteredTokens = [];
       const seenInThisArticle = new Set();
 
-      for (const token of tokens) {
-        if (STOPWORDS.has(token)) continue;
-        if (token.length < 4) continue;
-        if (seenInThisArticle.has(token)) continue;
-        seenInThisArticle.add(token);
-
-        if (!freq.has(token)) {
-          freq.set(token, { count: 0, articleIds: new Set() });
+      for (const token of rawTokens) {
+        if (!isGoodToken(token)) continue;
+        filteredTokens.push(token);
+        if (!seenInThisArticle.has(token)) {
+          seenInThisArticle.add(token);
+          globalArticleCount.set(
+            token,
+            (globalArticleCount.get(token) || 0) + 1
+          );
         }
-        const entry = freq.get(token);
-        entry.count += 1;
-        entry.articleIds.add(article.id);
+      }
+
+      if (filteredTokens.length > 0) {
+        articleTokens.set(article.id, filteredTokens);
       }
     }
 
-    if (freq.size === 0) {
+    if (articleTokens.size === 0) {
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
@@ -217,28 +266,84 @@ exports.handler = async (event) => {
       };
     }
 
-    let maxCount = 0;
-    for (const { count } of freq.values()) {
-      if (count > maxCount) maxCount = count;
-    }
-    const topWords = [];
-    for (const [word, { count, articleIds }] of freq.entries()) {
-      if (count === maxCount) {
-        topWords.push({ word, articleIds });
+    // 1) Choose a main article for today (most recent in the chosen category)
+    const [mainArticle] = [...articles].sort(
+      (a, b) => new Date(b.pub_date) - new Date(a.pub_date)
+    );
+
+    const mainTokens = articleTokens.get(mainArticle.id) || [];
+
+    if (mainTokens.length === 0) {
+      // Fallback: if main article has no good tokens, fall back to any article tokens
+      const firstEntry = articleTokens.values().next().value;
+      if (!firstEntry || firstEntry.length === 0) {
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: todayKey,
+            category,
+            targetWord: "collegian",
+            articles: [],
+            note: "No suitable words found; using fallback word.",
+          }),
+        };
       }
     }
 
-    // Deterministic choice among tied words: sort alphabetically and take first.
-    topWords.sort((a, b) => a.word.localeCompare(b.word));
-    const chosen = topWords[0];
+    // 2) Count frequencies in the main article and compute a distinctiveness score
+    const freqHere = new Map();
+    for (const token of mainTokens) {
+      freqHere.set(token, (freqHere.get(token) || 0) + 1);
+    }
 
-    const articleIdList = Array.from(chosen.articleIds);
-    const relatedArticles = articles.filter((a) => articleIdList.includes(a.id));
+    let bestWord = null;
+    let bestScore = -Infinity;
+
+    for (const [word, count] of freqHere.entries()) {
+      const inArticles = globalArticleCount.get(word) || 1;
+      const score = count * Math.log((totalArticles + 1) / (1 + inArticles));
+      if (score > bestScore) {
+        bestScore = score;
+        bestWord = word;
+      }
+    }
+
+    if (!bestWord) {
+      // As a final fallback, pick the most frequent token in main article
+      let fallbackWord = null;
+      let fallbackCount = -1;
+      for (const [word, count] of freqHere.entries()) {
+        if (count > fallbackCount) {
+          fallbackCount = count;
+          fallbackWord = word;
+        }
+      }
+      bestWord = fallbackWord || "collegian";
+    }
+
+    // 3) Collect all articles where this word appears (always include mainArticle first)
+    const relatedArticles = [];
+    const addedIds = new Set();
+
+    if (bestWord && mainArticle) {
+      relatedArticles.push(mainArticle);
+      addedIds.add(mainArticle.id);
+    }
+
+    for (const article of articles) {
+      if (addedIds.has(article.id)) continue;
+      const tokens = articleTokens.get(article.id);
+      if (tokens && tokens.includes(bestWord)) {
+        relatedArticles.push(article);
+        addedIds.add(article.id);
+      }
+    }
 
     const responseBody = {
       date: todayKey,
       category,
-      targetWord: chosen.word,
+      targetWord: bestWord,
       articles: relatedArticles.map((a) => ({
         id: a.id,
         title: a.title,
