@@ -9,19 +9,6 @@ const DAILY_STORAGE_KEY = "hotandcold_daily_progress";
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
-const getTimeUntilReset = () => {
-  const now = new Date();
-  const nextReset = new Date(now);
-  nextReset.setHours(24, 0, 0, 0);
-  const diffMs = Math.max(nextReset - now, 0);
-  const totalMinutes = Math.ceil(diffMs / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return { hours, minutes };
-};
-
-const formatCountdown = ({ hours, minutes }) =>
-  `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 
 const levenshtein = (a, b) => {
   const s = a.toLowerCase();
@@ -73,7 +60,6 @@ export default function HotAndCold() {
   const [similarity, setSimilarity] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState("");
-  const [timeUntilReset, setTimeUntilReset] = useState(getTimeUntilReset);
   const [dailyInfo, setDailyInfo] = useState(null);
   const [hintRevealed, setHintRevealed] = useState(false);
 
@@ -151,12 +137,6 @@ export default function HotAndCold() {
     load();
   }, [analytics]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeUntilReset(getTimeUntilReset());
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     if (!targetWord) return;
@@ -229,9 +209,6 @@ export default function HotAndCold() {
                 Today&apos;s beat: {dailyInfo.category}
               </span>
             )}
-            <span className="rounded-full bg-slate-200/70 px-3 py-1">
-              New puzzle in {formatCountdown(timeUntilReset)}
-            </span>
           </div>
         </div>
         <button
