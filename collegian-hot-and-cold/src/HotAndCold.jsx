@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader, Thermometer, Info } from "lucide-react";
+import { Loader, Info } from "lucide-react";
 import useGameAnalytics from "./hooks/useGameAnalytics";
 import EmailSignup from "./components/EmailSignup";
 import DisclaimerFooter from "./components/DisclaimerFooter";
@@ -62,8 +62,27 @@ export default function HotAndCold() {
   const [error, setError] = useState("");
   const [dailyInfo, setDailyInfo] = useState(null);
   const [hintRevealed, setHintRevealed] = useState(false);
+  const [showLatest, setShowLatest] = useState(true); // Latest 5 vs All Guesses
 
   const analytics = useGameAnalytics(GAME_ID, 0);
+
+  const bestSimilarity = history.length ? Math.max(...history.map((e) => e.similarity)) : 0;
+
+  const progressBarColor = () => {
+    if (bestSimilarity >= 80) return "#c8102e";
+    if (bestSimilarity >= 60) return "#ff8c00";
+    if (bestSimilarity >= 40) return "#0074d9";
+    return "#001e44";
+  };
+
+  const tempClass = (label) => {
+    if (label === "Bullseye!") return "temp-bullseye";
+    if (label === "On fire!") return "temp-onfire";
+    if (label === "Hot") return "temp-hot";
+    if (label === "Warm") return "temp-warm";
+    if (label === "Cold") return "temp-cold";
+    return "temp-freezing";
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -175,223 +194,194 @@ export default function HotAndCold() {
 
   if (gameState === "loading") {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center">
-        <Loader className="animate-spin text-blue-600 mb-4" size={48} />
-        <p className="text-slate-500 font-bold">Loading today&apos;s word...</p>
+      <div className="hotcold-page flex flex-col items-center justify-center">
+        <Loader className="animate-spin text-white mb-4" size={48} />
+        <p className="text-[#b0b0b0] font-bold">Loading today&apos;s word...</p>
       </div>
     );
   }
 
   if (gameState === "error") {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4">
-        <p className="text-red-600 font-bold mb-2">{error}</p>
-        <p className="text-slate-500 text-sm">
+      <div className="hotcold-page flex flex-col items-center justify-center px-4">
+        <p className="text-red-400 font-bold mb-2">{error}</p>
+        <p className="text-[#b0b0b0] text-sm">
           Check your connection or try again later.
         </p>
       </div>
     );
   }
 
+  const displayHistory = showLatest ? history.slice(-5) : history;
+  const sortedDisplay = [...displayHistory].sort((a, b) => b.similarity - a.similarity);
+
   return (
-    <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900">
-      <div className="max-w-2xl mx-auto mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight">
-            Hot &amp; Cold
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Guess the most important word from the latest Collegian coverage.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-            {dailyInfo?.category && (
-              <span className="rounded-full bg-slate-200/70 px-3 py-1">
-                Today&apos;s beat: {dailyInfo.category}
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="hotcold-page font-sans">
+      <header className="site-header">
+        <div className="logo">The Daily Collegian</div>
+        <div className="section">Games</div>
         <button
           type="button"
           onClick={() => analytics.logFeedback()}
-          className="bg-white px-3 py-2 rounded-full shadow-sm font-bold text-slate-600 border border-slate-200 flex items-center gap-2 hover:border-blue-200 hover:text-blue-700 transition text-sm self-start"
+          className="mt-3 px-3 py-1.5 text-sm border border-white/60 text-white/90 rounded hover:bg-white/10 flex items-center gap-1.5 mx-auto"
         >
-          <Info size={16} />
+          <Info size={14} />
           Feedback
         </button>
-      </div>
+      </header>
 
-      <div className="max-w-2xl mx-auto space-y-6">
-        {articles?.[0] && (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm">
-            <h2 className="text-sm font-black text-slate-900 mb-1">
-              Today&apos;s article
-            </h2>
-            <p className="text-xs text-slate-500 mb-2">
-              The daily word is chosen from this story.
-            </p>
-            <a
-              href={articles[0].url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline"
-            >
-              {articles[0].title}
-            </a>
-          </div>
-        )}
+      <main className="flex justify-center px-4 py-10">
+        <article className="hotcold-card space-y-6">
+          <h1>Hot &amp; Cold</h1>
+          <p className="hotcold-description">
+            Guess today&apos;s word! After each guess, you&apos;ll be told how &quot;warm&quot; or &quot;cold&quot; you are.
+          </p>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md">
-              <Thermometer size={20} />
-            </div>
-            <div>
-              <h2 className="font-black text-slate-900 text-lg">
-                How close is your guess?
-              </h2>
-              <p className="text-xs text-slate-500">
-                Type a single word. You&apos;ll see how hot or cold you are.
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                value={guess}
-                onChange={(e) => setGuess(e.target.value)}
-                placeholder="Your guess (e.g., football, tuition, charity)"
-                className="flex-1 px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base"
-              />
-              <button
-                type="submit"
-                className="px-5 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all active:scale-95"
+          {articles?.[0] && (
+            <div className="pb-4 border-b border-[#eee]">
+              <h2 className="text-sm font-bold text-[#111] mb-1">Today&apos;s article</h2>
+              <p className="text-xs text-[#444] mb-2">The daily word is chosen from this story.</p>
+              <a
+                href={articles[0].url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-semibold text-[#001e44] hover:underline"
+                onClick={() => analytics.logContentClick({ article_id: articles[0].id, source: "todays_article" })}
               >
-                Submit guess
-              </button>
+                {articles[0].title}
+              </a>
             </div>
+          )}
+
+          <form id="guessForm" className="hotcold-form" onSubmit={handleSubmit}>
+            <input
+              type="text"
+              id="guessInput"
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              placeholder="Enter your guess"
+              autoComplete="off"
+            />
+            <button type="submit">Submit</button>
           </form>
 
-          <div className="mt-6">
-            <div className="relative h-2 bg-slate-200 rounded-full">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 -translate-x-1/2">
-                Far
-              </div>
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 translate-x-1/2">
-                Old Main
-              </div>
-              {similarity !== null && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
-                  style={{ left: `${similarity}%` }}
-                >
-                  <div className="w-4 h-4 rounded-full bg-blue-600 shadow-md border-2 border-white" />
-                </div>
-              )}
-            </div>
-            <div className="mt-3 text-center text-sm text-slate-600 font-medium min-h-[1.5rem]">
-              {similarity !== null && (
-                <>
-                  {similarity}% — {labelForSimilarity(similarity)}
-                </>
-              )}
-            </div>
-            {targetWord && (
-              <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="text-xs text-slate-500">
-                  Today&apos;s word is a single word from recent{" "}
-                  {dailyInfo?.category ? dailyInfo.category.toLowerCase() : "coverage"}
-                  .
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setHintRevealed(true)}
-                  disabled={hintRevealed}
-                  className="self-start px-3 py-2 rounded-lg border border-dashed border-slate-300 text-xs font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-700 disabled:opacity-60 disabled:cursor-not-allowed bg-white"
-                >
-                  {hintRevealed ? "Hint revealed" : "Get a hint"}
-                </button>
-              </div>
-            )}
-            {hintRevealed && targetWord && (
-              <p className="mt-2 text-xs text-slate-600">
-                Hint: the word is{" "}
-                <span className="font-bold">{targetWord.length}</span> letters long and
-                starts with{" "}
-                <span className="font-bold">
-                  &ldquo;{targetWord[0].toUpperCase()}&rdquo;
-                </span>
-                .
-              </p>
-            )}
-          </div>
-        </div>
-
-        {history.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm">
-            <h3 className="font-black text-slate-900 text-base mb-3">
-              Your guesses
-            </h3>
-            <ul className="space-y-2 text-sm">
-              {[...history]
-                .sort((a, b) => b.similarity - a.similarity)
-                .map((entry, index) => (
-                  <li
-                    key={`${entry.guess}-${index}`}
-                    className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
-                  >
-                    <span className="font-semibold text-slate-800">
-                      {entry.guess}
-                    </span>
-                    <span className="text-xs font-bold text-slate-600">
-                      {entry.similarity}% • {entry.label}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          </div>
-        )}
-
-        {gameState === "won" && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-5 sm:p-6 shadow-sm space-y-3">
-            <h2 className="text-xl font-black text-green-700">
-              You found it!
-            </h2>
-            <p className="text-green-800 text-sm">
-              Today&apos;s word was{" "}
-              <span className="font-black uppercase tracking-wide">
-                {targetWord}
+          <div id="feedback" className="hotcold-feedback min-h-[1.5rem]">
+            {similarity !== null && gameState !== "won" && (
+              <span className={tempClass(labelForSimilarity(similarity))}>
+                {similarity}% — {labelForSimilarity(similarity)}
               </span>
-              .
-            </p>
-            {articles?.length > 0 && (
-              <div className="mt-2 space-y-1 text-sm text-green-900">
-                <p className="font-semibold">
-                  It appeared in these recent articles:
-                </p>
-                <ul className="list-disc list-inside space-y-1">
-                  {articles.map((article) => (
-                    <li key={article.id}>
-                      <a
-                        href={article.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-green-800 hover:text-green-900 hover:underline"
-                      >
-                        {article.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            )}
+            {gameState === "won" && (
+              <span className="temp-bullseye">Correct! You found today&apos;s word.</span>
             )}
           </div>
-        )}
 
-        <EmailSignup gameName="Hot & Cold" />
-      </div>
+          <div className="game-body">
+            <div className="history-container">
+              <div className="hotcold-progress-container">
+                <div
+                  className="hotcold-progress-bar"
+                  style={{
+                    width: `${bestSimilarity}%`,
+                    background: progressBarColor(),
+                  }}
+                />
+              </div>
+
+              <div className="hotcold-history">
+                <h2>Your Guesses</h2>
+                <div id="historyList">
+                  {sortedDisplay.map((entry, index) => (
+                    <div key={`${entry.guess}-${index}`} className="guess-item">
+                      <span className="font-semibold text-[#111]">{entry.guess}</span>
+                      <span className={`font-bold ${tempClass(entry.label)}`}>
+                        {entry.similarity}% — {entry.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {history.length > 0 && (
+                  <div className="hotcold-history-buttons">
+                    <button
+                      type="button"
+                      id="latestBtn"
+                      className={showLatest ? "active" : ""}
+                      onClick={() => setShowLatest(true)}
+                    >
+                      Latest 5 Guesses
+                    </button>
+                    <button
+                      type="button"
+                      id="allBtn"
+                      className={!showLatest ? "active" : ""}
+                      onClick={() => setShowLatest(false)}
+                    >
+                      All Guesses
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {targetWord && (
+            <div className="pt-2 border-t border-[#eee] flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-[#444]">
+                Today&apos;s word is from recent {dailyInfo?.category ? dailyInfo.category.toLowerCase() : "coverage"}.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hintRevealed) {
+                    analytics.logAction("hint_used", { hint_number: 1 });
+                    setHintRevealed(true);
+                  }
+                }}
+                disabled={hintRevealed}
+                className="text-xs font-semibold text-[#001e44] hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {hintRevealed ? "Hint revealed" : "Get a hint"}
+              </button>
+            </div>
+          )}
+          {hintRevealed && targetWord && (
+            <p className="text-xs text-[#444]">
+              Hint: the word is <strong>{targetWord.length}</strong> letters and starts with &ldquo;{targetWord[0].toUpperCase()}&rdquo;.
+            </p>
+          )}
+
+          {gameState === "won" && (
+            <div className="pt-4 border-t-2 border-[#c8102e] space-y-2">
+              <h2 className="text-xl font-bold text-[#111]">You found it!</h2>
+              <p className="text-sm text-[#444]">
+                Today&apos;s word was <strong className="uppercase tracking-wide">{targetWord}</strong>.
+              </p>
+              {articles?.length > 0 && (
+                <div className="text-sm">
+                  <p className="font-semibold text-[#111] mb-1">It appeared in these recent articles:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {articles.map((article) => (
+                      <li key={article.id}>
+                        <a
+                          href={article.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#001e44] hover:underline"
+                          onClick={() => analytics.logContentClick({ article_id: article.id, source: "win_panel" })}
+                        >
+                          {article.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <EmailSignup gameName="Hot & Cold" />
+        </article>
+      </main>
 
       <DisclaimerFooter />
     </div>
