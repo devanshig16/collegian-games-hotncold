@@ -11,6 +11,7 @@ A monorepo of standalone, React-based games built for **The Daily Collegian**. E
 | **Beat the Editor** | `collegian-quiz/` | Weekly news quiz with an editor score and admin publishing UI. | Postgres `quiz_configs` table via Netlify function |
 | **Redacted** | `collegian-redacted/` | Daily fill-in-the-blank headline guessing game. | Postgres `articles` table via Netlify function |
 | **Time Machine** | `collegian-timemachine/` | Daily historical archive puzzle built on PSU newspaper PDFs. | Pennsylvania Newspaper Archive via Netlify redirect |
+| **Hot & Cold** | `collegian-hotncold/` | Daily word guesses with “hot/cold” similarity clues. | Postgres `articles` table via Netlify function (headlines) |
 
 ## 🧰 Common tech stack
 
