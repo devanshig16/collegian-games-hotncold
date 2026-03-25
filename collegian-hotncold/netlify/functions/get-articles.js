@@ -24,10 +24,19 @@ exports.handler = async (event, context) => {
 
     return {
       statusCode: 200,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(result.rows),
     };
   } catch (err) {
-    return { statusCode: 500, body: err.toString() };
+    console.error("get-articles:", err);
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: err.message || "Database error",
+        detail: process.env.NETLIFY_DEV ? String(err) : undefined,
+      }),
+    };
   } finally {
     await client.end();
   }

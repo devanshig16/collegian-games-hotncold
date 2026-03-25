@@ -3,6 +3,14 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Local dev: run `netlify dev` (not `npm run dev` alone) so Vite + functions share one origin.
+# Open http://localhost:8888 — Netlify proxies to Vite on 5173 and serves /.netlify/functions/*
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+  publish = "dist"
+
 # SPA fallback
 [[redirects]]
   from = "/*"

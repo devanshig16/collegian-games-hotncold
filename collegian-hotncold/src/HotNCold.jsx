@@ -423,12 +423,32 @@ export default function HotNCold() {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.DEV && dailyWords.length) console.log("dailyWords", dailyWords);
+  }, [dailyWords]);
+
+  useEffect(() => {
     const fetchArticles = async () => {
       setHeadlinesError(null);
       try {
         const res = await fetch(DB_API_ENDPOINT);
-        if (!res.ok) throw new Error("Failed to load articles");
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          throw new Error(
+            import.meta.env.DEV
+              ? "get-articles did not return JSON. Use `netlify dev` and open http://localhost:8888 — `npm run dev` (Vite only) does not run Netlify functions."
+              : "Unexpected response from server."
+          );
+        }
         const data = await res.json();
+        if (!res.ok) {
+          const msg =
+            typeof data?.message === "string"
+              ? data.message
+              : `Request failed (${res.status})`;
+          throw new Error(
+            import.meta.env.DEV && data?.detail ? `${msg} — ${data.detail}` : msg
+          );
+        }
         const cleaned = (data || []).filter((a) => a?.headline);
         const pool = extractWordsFromArticles(cleaned);
         if (pool.length < DAILY_LIMIT) {
@@ -441,9 +461,10 @@ export default function HotNCold() {
         }
       } catch (err) {
         console.error("Hot & Cold: failed to fetch articles", err);
-        setHeadlinesError(
-          "Could not load headlines from The Daily Collegian articles database (Postgres). Check your connection and try again."
-        );
+        const fallback =
+          "Could not load headlines from The Daily Collegian articles database (Postgres). Check your connection and try again.";
+        const msg = err instanceof Error && err.message ? err.message : fallback;
+        setHeadlinesError(msg);
         setArticles([]);
       } finally {
         setLoading(false);

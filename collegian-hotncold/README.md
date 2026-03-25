@@ -4,11 +4,14 @@ Daily word-guessing game for **The Daily Collegian**. Secret words are taken **o
 
 ## Run locally
 
+**Use Netlify’s dev server** so `get-articles` and `word-similarity` run. After `npm install`:
+
 ```bash
 cd collegian-hotncold
-npm install
 netlify dev
 ```
+
+Then open **http://localhost:8888** (not 5173). `netlify.toml` wires Vite on 5173 to this port with functions.
 
 Plain Vite (no Netlify functions — headlines and OpenAI will not work):
 
