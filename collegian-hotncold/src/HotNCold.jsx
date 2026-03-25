@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Confetti from "react-confetti";
-import { Flame, Loader, Snowflake, Trophy } from "lucide-react";
+import { Flame, Loader, Trophy } from "lucide-react";
 import DisclaimerFooter from "./components/DisclaimerFooter";
 import EmailSignup from "./components/EmailSignup";
 import useGameAnalytics from "./hooks/useGameAnalytics";
@@ -300,37 +300,33 @@ function similarityScore(guess, secret) {
 }
 
 function temperatureFromScore(score) {
+  // Match the categories from your provided frontend design.
+  // `score` is in [0..1] where 1 is exact match.
   if (score >= 1) {
     return {
       key: "exact",
-      label: "You got it!",
+      label: "Correct",
       sub: "Exact match",
       bar: 100,
       heatClass: "from-orange-500 to-red-600",
       textClass: "text-red-700",
+      heatValue: 5,
+      color: "#c8102e",
     };
   }
-  if (score >= 0.82) {
+  if (score > 0.75) {
     return {
-      key: "blazing",
-      label: "Blazing hot",
-      sub: "You’re very close",
+      key: "very-hot",
+      label: "Very Hot",
+      sub: "You're very close",
       bar: 88,
       heatClass: "from-orange-400 to-red-500",
       textClass: "text-orange-700",
+      heatValue: 4,
+      color: "#c8102e",
     };
   }
-  if (score >= 0.65) {
-    return {
-      key: "hot",
-      label: "Hot",
-      sub: "Getting warmer",
-      bar: 68,
-      heatClass: "from-amber-400 to-orange-500",
-      textClass: "text-amber-700",
-    };
-  }
-  if (score >= 0.45) {
+  if (score > 0.5) {
     return {
       key: "warm",
       label: "Warm",
@@ -338,25 +334,31 @@ function temperatureFromScore(score) {
       bar: 48,
       heatClass: "from-yellow-300 to-amber-400",
       textClass: "text-yellow-800",
+      heatValue: 3,
+      color: "#ff8c00",
     };
   }
-  if (score >= 0.25) {
+  if (score > 0.25) {
     return {
-      key: "cool",
-      label: "Cool",
+      key: "cold",
+      label: "Cold",
       sub: "Keep trying",
       bar: 28,
       heatClass: "from-sky-300 to-cyan-400",
       textClass: "text-sky-800",
+      heatValue: 2,
+      color: "#0074d9",
     };
   }
   return {
-    key: "cold",
-    label: "Ice cold",
+    key: "freezing",
+    label: "Freezing",
     sub: "Far from the word",
     bar: 10,
     heatClass: "from-slate-300 to-blue-400",
     textClass: "text-slate-700",
+    heatValue: 1,
+    color: "#777777",
   };
 }
 
@@ -371,15 +373,8 @@ const getTimeUntilReset = () => {
   return { hours, minutes };
 };
 
-/** How each guess was scored (for UI labels) */
+/** How each guess was scored (for analytics / debugging) */
 /** @typedef {'openai' | 'levenshtein' | 'exact'} ScoreSource */
-
-/** @param {ScoreSource} source */
-function scoreSourceLabel(source) {
-  if (source === "openai") return "OpenAI";
-  if (source === "exact") return "Exact match";
-  return "Levenshtein";
-}
 
 export default function HotNCold() {
   const [articles, setArticles] = useState([]);
@@ -405,6 +400,8 @@ export default function HotNCold() {
   const [guesses, setGuesses] = useState([]);
   const [shake, setShake] = useState(false);
   const [guessLoading, setGuessLoading] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [showLatest, setShowLatest] = useState(true);
   /** Why OpenAI wasn’t used (set when API fails so you can debug .env / billing / netlify dev) */
   const [openAiErrorHint, setOpenAiErrorHint] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -479,6 +476,11 @@ export default function HotNCold() {
     gameStartLoggedRef.current = true;
     analytics.logStart({ difficulty: "daily" });
   }, [analytics]);
+
+  // Keep feedback focused on the current round.
+  useEffect(() => {
+    setFeedback("");
+  }, [roundIndex]);
 
   useEffect(() => {
     if (readSavedProgress()?.completed) return;
@@ -617,9 +619,12 @@ export default function HotNCold() {
     setInput("");
 
     if (trimmed.toLowerCase() === secretWord.toLowerCase()) {
+      setFeedback("Correct! You found today's word.");
       advanceOrFinish(true);
       return;
     }
+
+    setFeedback(temp.label);
 
     if (guesses.length + 1 >= MAX_GUESSES_PER_ROUND) {
       advanceOrFinish(false);
@@ -627,6 +632,28 @@ export default function HotNCold() {
   };
 
   const resetCountdown = getTimeUntilReset();
+  const bestSimilarity = useMemo(() => {
+    return guesses.reduce((max, g) => Math.max(max, g?.score ?? 0), 0);
+  }, [guesses]);
+
+  const bestTemp = useMemo(() => temperatureFromScore(bestSimilarity), [bestSimilarity]);
+
+  const progressWidthPct = Math.max(0, Math.min(100, bestSimilarity * 100));
+  const progressBg =
+    bestTemp.label === "Very Hot"
+      ? "#c8102e"
+      : bestTemp.label === "Warm"
+        ? "#ff8c00"
+        : bestTemp.label === "Cold"
+          ? "#0074d9"
+          : "#001e44";
+
+  const displayGuesses = useMemo(() => {
+    const subset = showLatest ? guesses.slice(-5) : guesses;
+    return [...subset].sort(
+      (a, b) => (b?.temp?.heatValue ?? 0) - (a?.temp?.heatValue ?? 0)
+    );
+  }, [guesses, showLatest]);
 
   if (loading) {
     return (
@@ -677,6 +704,10 @@ export default function HotNCold() {
             <p className="text-slate-500 text-sm">
               Guess the secret word — hot/cold feedback uses OpenAI when it works, otherwise
               Levenshtein (spelling) distance.
+            </p>
+            <p className="text-slate-600 text-sm mt-2">
+              Correct word:{" "}
+              <span className="font-bold text-slate-900">{secretWord}</span>
             </p>
             <div className="flex flex-col gap-1.5 mt-3 text-xs font-semibold">
               <p className="text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
@@ -754,7 +785,7 @@ export default function HotNCold() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a guess..."
+                  placeholder="Enter your guess"
                   autoComplete="off"
                   autoCapitalize="off"
                   spellCheck="false"
@@ -769,59 +800,73 @@ export default function HotNCold() {
                   {guessLoading ? (
                     <Loader size={18} className="animate-spin shrink-0" />
                   ) : (
-                    "Guess"
+                    "Submit"
                   )}
                 </button>
               </div>
             </form>
 
-            {guesses.length > 0 && (
-              <ul className="space-y-2 max-h-64 overflow-y-auto">
-                {[...guesses].reverse().map((g) => (
-                  <li
-                    key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between gap-3 min-w-0">
-                      <span className="font-bold text-slate-800 truncate">{g.text}</span>
-                      <span
-                        className={`text-xs font-black uppercase shrink-0 ${g.temp.textClass}`}
-                      >
-                        {g.temp.label}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide shrink-0">
-                      Scored with: {scoreSourceLabel(g.scoreSource ?? "levenshtein")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div
+              id="feedback"
+              className="font-bold text-center text-slate-900 min-h-[1.25rem]"
+            >
+              {feedback}
+            </div>
 
-            <div className="rounded-xl border border-slate-200 p-4 bg-gradient-to-br from-slate-50 to-white">
-              <div className="flex items-center gap-2 text-slate-600 text-sm font-bold mb-2">
-                <Snowflake size={16} className="text-sky-500" />
-                <span>Heat meter (last guess)</span>
+            <div className="space-y-4">
+              <div className="progress-container w-full h-5 bg-[#eee] rounded-[10px] overflow-hidden">
+                <div
+                  className="progress-bar h-full transition-[width] duration-300 ease-in-out rounded-[10px 0 0 10px]"
+                  style={{
+                    width: `${progressWidthPct}%`,
+                    backgroundColor: progressBg,
+                  }}
+                />
               </div>
-              {guesses.length === 0 ? (
-                <p className="text-slate-400 text-sm">Submit a guess to see how close you are.</p>
-              ) : (
-                <>
-                  <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full bg-gradient-to-r ${guesses[guesses.length - 1].temp.heatClass} transition-all duration-500`}
-                      style={{
-                        width: `${guesses[guesses.length - 1].temp.bar}%`,
-                      }}
-                    />
-                  </div>
-                  <p
-                    className={`mt-2 text-sm font-medium ${guesses[guesses.length - 1].temp.textClass}`}
-                  >
-                    {guesses[guesses.length - 1].temp.sub}
-                  </p>
-                </>
-              )}
+
+              <div className="flex gap-3 history-buttons">
+                <button
+                  type="button"
+                  onClick={() => setShowLatest(true)}
+                  disabled={showLatest}
+                  className="px-3 py-2 bg-[#001e44] text-white font-bold text-sm rounded-md hover:bg-[#003366] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Latest 5 Guesses
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLatest(false)}
+                  disabled={!showLatest}
+                  className="px-3 py-2 bg-[#001e44] text-white font-bold text-sm rounded-md hover:bg-[#003366] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  All Guesses
+                </button>
+              </div>
+
+              <div className="history">
+                <h2 className="font-serif text-[18px] font-bold">Your Guesses</h2>
+
+                <ul className="space-y-2 mt-2 max-h-64 overflow-y-auto">
+                  {displayGuesses.length === 0 ? (
+                    <li className="text-slate-400 text-sm py-2">No guesses yet.</li>
+                  ) : (
+                    displayGuesses.map((g) => (
+                      <li
+                        key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
+                        className="flex items-center justify-between gap-3 py-2 border-b border-slate-100"
+                      >
+                        <span className="font-bold text-slate-800 truncate px-3">{g.text}</span>
+                        <span
+                          className="text-xs font-black uppercase shrink-0 px-3"
+                          style={{ color: g?.temp?.color ?? "#777777" }}
+                        >
+                          {g.temp.label}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
             </div>
           </div>
         )}

@@ -1,8 +1,8 @@
 import { Github } from "lucide-react";
 
 const DisclaimerFooter = () => {
-  const DEV_1 = { name: "Jon Zavialov", url: "https://jonzav.me" };
-  const DEV_2 = { name: "Rohan Badami", url: "https://github.com/RohanBadami" };
+  const DEV_1 = { name: "devanshig16", url: "https://github.com/devanshig16" };
+  const DEV_2 = { name: "Annahi05", url: "https://github.com/Annahi05" };
 
   return (
     <footer className="mt-16 w-full border-t border-slate-200 py-8 text-center font-sans">
