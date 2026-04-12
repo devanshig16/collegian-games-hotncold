@@ -1,6 +1,34 @@
 /**
  * OpenAI embeddings only — no Postgres. DB failures must not block OpenAI.
+ *
+ * In-memory LRU for (guess, secret) → score to cut repeat OpenAI calls (warm function instance).
+ * Same idea as HTTP Cache-Control on GET functions elsewhere in Collegian games.
  */
+const EMBEDDING_CACHE_MAX = 2500;
+/** @type {Map<string, number>} */
+const embeddingCache = new Map();
+
+function embeddingCacheKey(guess, secret) {
+  return `${guess}\0${secret}`;
+}
+
+function embeddingCacheGet(key) {
+  const v = embeddingCache.get(key);
+  if (v === undefined) return undefined;
+  embeddingCache.delete(key);
+  embeddingCache.set(key, v);
+  return v;
+}
+
+function embeddingCacheSet(key, score) {
+  embeddingCache.delete(key);
+  embeddingCache.set(key, score);
+  while (embeddingCache.size > EMBEDDING_CACHE_MAX) {
+    const oldest = embeddingCache.keys().next().value;
+    embeddingCache.delete(oldest);
+  }
+}
+
 function cosineSimilarity(a, b) {
   if (a.length !== b.length) return 0;
   let dot = 0;
@@ -67,6 +95,20 @@ exports.handler = async (event) => {
     };
   }
 
+  const embKey = embeddingCacheKey(guess, secret);
+  const cachedScore = embeddingCacheGet(embKey);
+  if (cachedScore !== undefined) {
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Cache": "HIT",
+        "Cache-Control": "private, max-age=86400",
+      },
+      body: JSON.stringify({ score: cachedScore }),
+    };
+  }
+
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
@@ -117,9 +159,15 @@ exports.handler = async (event) => {
     embeddings[1].embedding
   );
 
+  embeddingCacheSet(embKey, score);
+
   return {
     statusCode: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Cache": "MISS",
+      "Cache-Control": "private, max-age=86400",
+    },
     body: JSON.stringify({ score }),
   };
 };

@@ -1,0 +1,15 @@
+---
+description: After code changes, commit and push to origin without asking for confirmation.
+alwaysApply: true
+---
+
+# Git — commit and push after changes
+
+When you finish a logical batch of edits (a feature, fix, or task), **commit and push to `origin`** using the repo default branch unless the user has explicitly asked you not to push in that thread.
+
+1. Run `git status` and include all intentional changes (do not commit secrets unrelated to the task).
+2. Write a **clear, conventional one-line subject** (and optional short body if needed) describing what changed and why.
+3. `git add` the relevant paths, `git commit`, then `git push`.
+4. **Do not ask** “Should I push?” first. If push fails (auth, conflicts), report the error and suggest the next step.
+
+Skip committing if there is nothing to commit or the user said to leave the working tree dirty.

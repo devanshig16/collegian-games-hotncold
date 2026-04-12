@@ -15,8 +15,9 @@ exports.handler = async (event, context) => {
   try {
     await client.connect();
     const result = await client.query(`
-      SELECT guid as id, title as headline, url as link, author, image_url as image
-      FROM articles 
+      SELECT guid as id, title as headline, url as link, author, image_url as image,
+             COALESCE(content, '') as content
+      FROM articles
       WHERE pub_date > NOW() - INTERVAL '7 days'
       AND image_url IS NOT NULL
       ORDER BY pub_date DESC

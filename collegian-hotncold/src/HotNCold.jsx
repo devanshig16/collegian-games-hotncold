@@ -5,235 +5,72 @@ import DisclaimerFooter from "./components/DisclaimerFooter";
 import EmailSignup from "./components/EmailSignup";
 import useGameAnalytics from "./hooks/useGameAnalytics";
 
-const DB_API_ENDPOINT = "/.netlify/functions/get-articles";
+const DAILY_WORDS_ENDPOINT = "/.netlify/functions/get-hotncold-daily-words";
 const SIMILARITY_API_ENDPOINT = "/.netlify/functions/word-similarity";
 const DAILY_LIMIT = 5;
 const MAX_GUESSES_PER_ROUND = 10;
 const DAILY_STORAGE_KEY = "hotncold_daily_progress";
 
-/** Articles, pronouns, determiners, and common function words — never used as secret answers */
-const STOP_WORDS = new Set([
-  // articles
-  "a",
-  "an",
-  "the",
-  // personal / possessive / reflexive pronouns
-  "i",
-  "me",
-  "my",
-  "mine",
-  "you",
-  "your",
-  "yours",
-  "he",
-  "him",
-  "his",
-  "she",
-  "her",
-  "hers",
-  "it",
-  "its",
-  "we",
-  "us",
-  "our",
-  "ours",
-  "they",
-  "them",
-  "their",
-  "theirs",
-  "myself",
-  "yourself",
-  "himself",
-  "herself",
-  "itself",
-  "ourselves",
-  "yourselves",
-  "themselves",
-  // demonstratives & interrogatives (often 4+ chars in headlines)
-  "this",
-  "that",
-  "these",
-  "those",
-  "what",
-  "which",
-  "who",
-  "whom",
-  "whose",
-  "when",
-  "where",
-  "why",
-  "how",
-  "whatever",
-  "whoever",
-  "whomever",
-  "whichever",
-  // indefinite / distributive
-  "anyone",
-  "anything",
-  "anybody",
-  "anywhere",
-  "everyone",
-  "everything",
-  "everybody",
-  "everywhere",
-  "someone",
-  "something",
-  "somebody",
-  "somewhere",
-  "nobody",
-  "nothing",
-  "nowhere",
-  "none",
-  "each",
-  "either",
-  "neither",
-  "both",
-  "another",
-  "other",
-  "such",
-  // common prepositions / particles
-  "in",
-  "on",
-  "at",
-  "to",
-  "for",
-  "of",
-  "with",
-  "by",
-  "from",
-  "into",
-  "onto",
-  "upon",
-  "over",
-  "under",
-  "above",
-  "below",
-  "between",
-  "among",
-  "through",
-  "during",
-  "before",
-  "after",
-  "since",
-  "until",
-  "within",
-  "without",
-  "against",
-  "toward",
-  "towards",
-  "about",
-  "around",
-  "across",
-  "along",
-  "behind",
-  "beyond",
-  "inside",
-  "outside",
-  "near",
-  "off",
-  "out",
-  "up",
-  "down",
-  // conjunctions & helpers
-  "and",
-  "but",
-  "or",
-  "nor",
-  "so",
-  "yet",
-  "as",
-  "if",
-  "than",
-  "then",
-  "because",
-  "although",
-  "though",
-  "while",
-  "whether",
-  // auxiliary / be-verbs
-  "is",
-  "am",
-  "are",
-  "was",
-  "were",
-  "be",
-  "been",
-  "being",
-  "has",
-  "have",
-  "had",
-  "having",
-  "do",
-  "does",
-  "did",
-  "doing",
-  "done",
-  "will",
-  "would",
-  "shall",
-  "should",
-  "can",
-  "could",
-  "may",
-  "might",
-  "must",
-  // misc function words
-  "said",
-  "says",
-  "new",
-  "more",
-  "most",
-  "some",
-  "no",
-  "not",
-  "just",
-  "like",
-  "also",
-  "only",
-  "even",
-  "very",
-  "too",
-  "here",
-  "there",
-  "now",
-  "again",
-  "once",
-  "ever",
-  "never",
-  "always",
-  "often",
-  "still",
-  "already",
-  "rather",
-  "quite",
-  "much",
-  "many",
-  "few",
-  "less",
-  "least",
-  "every",
-  "own",
-  "same",
-]);
-
-function extractWordsFromArticles(articles) {
-  const seen = new Set();
-  const words = [];
-  for (const a of articles) {
-    const headline = a.headline || a.title || "";
-    const tokens = headline.toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").split(/\s+/);
-    for (const t of tokens) {
-      const w = t.replace(/^['-]+|['-]+$/g, "");
-      if (w.length >= 4 && w.length <= 12 && !STOP_WORDS.has(w) && !seen.has(w)) {
-        seen.add(w);
-        words.push(w);
-      }
-    }
-  }
-  return words;
-}
+/** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
+const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v1";
+const SIMILARITY_SESSION_CACHE_KEY = "hotncold_similarity_v1";
+const DAILY_WORDS_SESSION_TTL_MS = 60 * 60 * 1000;
+const SIMILARITY_ENTRY_CAP = 500;
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
+
+function readDailyWordsSessionCache(todayKey) {
+  try {
+    const raw = sessionStorage.getItem(DAILY_WORDS_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (o.dateKey !== todayKey) return null;
+    if (Date.now() - o.timestamp > DAILY_WORDS_SESSION_TTL_MS) return null;
+    if (!Array.isArray(o.words) || o.words.length < DAILY_LIMIT) return null;
+    if (!o.meta || typeof o.meta !== "object") return null;
+    return { words: o.words, meta: o.meta };
+  } catch {
+    return null;
+  }
+}
+
+function writeDailyWordsSessionCache(payload) {
+  sessionStorage.setItem(
+    DAILY_WORDS_SESSION_CACHE_KEY,
+    JSON.stringify({ ...payload, timestamp: Date.now() })
+  );
+}
+
+function similaritySessionStorageKey(secretNorm, guessNorm) {
+  return `${secretNorm}||${guessNorm}`;
+}
+
+function readSimilaritySessionEntries(todayKey) {
+  try {
+    const raw = sessionStorage.getItem(SIMILARITY_SESSION_CACHE_KEY);
+    if (!raw) return {};
+    const o = JSON.parse(raw);
+    if (o.dateKey !== todayKey) return {};
+    return typeof o.entries === "object" && o.entries != null ? o.entries : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSimilaritySessionEntries(todayKey, entries) {
+  const keys = Object.keys(entries);
+  let trimmed = entries;
+  if (keys.length > SIMILARITY_ENTRY_CAP) {
+    trimmed = {};
+    keys.slice(-SIMILARITY_ENTRY_CAP).forEach((k) => {
+      trimmed[k] = entries[k];
+    });
+  }
+  sessionStorage.setItem(
+    SIMILARITY_SESSION_CACHE_KEY,
+    JSON.stringify({ dateKey: todayKey, entries: trimmed })
+  );
+}
 
 function readSavedProgress() {
   try {
@@ -246,25 +83,6 @@ function readSavedProgress() {
     return null;
   }
 }
-
-const createSeededRandom = (seed) => {
-  let value = seed % 2147483647;
-  if (value <= 0) value += 2147483646;
-  return () => {
-    value = (value * 16807) % 2147483647;
-    return value / 2147483647;
-  };
-};
-
-const seededShuffle = (items, seed) => {
-  const random = createSeededRandom(seed);
-  const array = [...items];
-  for (let i = array.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
 
 /** @param {string} a @param {string} b */
 function levenshtein(a, b) {
@@ -374,20 +192,27 @@ const getTimeUntilReset = () => {
 };
 
 /** How each guess was scored (for analytics / debugging) */
-/** @typedef {'openai' | 'levenshtein' | 'exact'} ScoreSource */
+/** @typedef {'openai' | 'openai-session-cache' | 'openai-server-cache' | 'levenshtein' | 'exact'} ScoreSource */
+
+/** @param {ScoreSource | null | undefined} s */
+function similaritySourceLabel(s) {
+  if (s === "openai") return "OpenAI embeddings — live API (word-similarity)";
+  if (s === "openai-session-cache")
+    return "OpenAI score — sessionStorage cache (no network; same day)";
+  if (s === "openai-server-cache")
+    return "OpenAI embeddings — function in-memory cache (X-Cache: HIT)";
+  if (s === "levenshtein") return "Browser Levenshtein only (similarity API unavailable or error)";
+  if (s === "exact") return "Exact match (no embedding call)";
+  return "—";
+}
 
 export default function HotNCold() {
-  const [articles, setArticles] = useState([]);
+  const [dailyWords, setDailyWords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [headlinesError, setHeadlinesError] = useState(null);
-
-  const seed = Number(getTodayKey().replace(/-/g, ""));
-  const dailyWords = useMemo(() => {
-    if (articles.length === 0) return [];
-    const pool = extractWordsFromArticles(articles);
-    if (pool.length < DAILY_LIMIT) return [];
-    return seededShuffle(pool, seed).slice(0, DAILY_LIMIT);
-  }, [articles, seed]);
+  const [dailyWordsMeta, setDailyWordsMeta] = useState(null);
+  const [lastSimilaritySource, setLastSimilaritySource] = useState(null);
+  const [dailyWordsFromSessionCache, setDailyWordsFromSessionCache] = useState(false);
 
   const [roundIndex, setRoundIndex] = useState(
     () => readSavedProgress()?.roundIndex ?? 0
@@ -424,15 +249,25 @@ export default function HotNCold() {
   }, [dailyWords]);
 
   useEffect(() => {
-    const fetchArticles = async () => {
+    const loadDailyWords = async () => {
       setHeadlinesError(null);
+      setDailyWordsFromSessionCache(false);
+      const todayKey = getTodayKey();
+      const sessionHit = readDailyWordsSessionCache(todayKey);
+      if (sessionHit) {
+        setDailyWords(sessionHit.words);
+        setDailyWordsMeta(sessionHit.meta);
+        setDailyWordsFromSessionCache(true);
+        setLoading(false);
+        return;
+      }
       try {
-        const res = await fetch(DB_API_ENDPOINT);
+        const res = await fetch(DAILY_WORDS_ENDPOINT);
         const ct = res.headers.get("content-type") || "";
         if (!ct.includes("application/json")) {
           throw new Error(
             import.meta.env.DEV
-              ? "get-articles did not return JSON. Use `netlify dev` and open http://localhost:8888 — `npm run dev` (Vite only) does not run Netlify functions."
+              ? "get-hotncold-daily-words did not return JSON. Use `netlify dev` and open http://localhost:8888 — `npm run dev` (Vite only) does not run Netlify functions."
               : "Unexpected response from server."
           );
         }
@@ -446,28 +281,53 @@ export default function HotNCold() {
             import.meta.env.DEV && data?.detail ? `${msg} — ${data.detail}` : msg
           );
         }
-        const cleaned = (data || []).filter((a) => a?.headline);
-        const pool = extractWordsFromArticles(cleaned);
-        if (pool.length < DAILY_LIMIT) {
+        const words = Array.isArray(data.words) ? data.words : [];
+        setDailyWordsMeta({
+          poolSize: typeof data.poolSize === "number" ? data.poolSize : null,
+          moderationSkipped: data.moderationSkipped === true,
+          moderationModel: typeof data.moderationModel === "string" ? data.moderationModel : null,
+          moderationBatches:
+            typeof data.moderationBatches === "number" ? data.moderationBatches : null,
+          dateKey: typeof data.dateKey === "string" ? data.dateKey : null,
+        });
+        if (words.length < DAILY_LIMIT) {
+          const poolSize =
+            typeof data.poolSize === "number" ? data.poolSize : words.length;
           setHeadlinesError(
-            `Need at least ${DAILY_LIMIT} playable words from Collegian headlines; found ${pool.length}. Words are not taken from anywhere else.`
+            typeof data.message === "string" && data.message.length > 0
+              ? data.message
+              : `Need at least ${DAILY_LIMIT} playable words from Collegian headlines and article text; found ${poolSize}.`
           );
-          setArticles([]);
+          setDailyWords([]);
         } else {
-          setArticles(cleaned);
+          setDailyWords(words);
+          writeDailyWordsSessionCache({
+            dateKey: data.dateKey ?? todayKey,
+            words,
+            meta: {
+              poolSize: typeof data.poolSize === "number" ? data.poolSize : null,
+              moderationSkipped: data.moderationSkipped === true,
+              moderationModel:
+                typeof data.moderationModel === "string" ? data.moderationModel : null,
+              moderationBatches:
+                typeof data.moderationBatches === "number" ? data.moderationBatches : null,
+              dateKey: typeof data.dateKey === "string" ? data.dateKey : null,
+            },
+          });
         }
       } catch (err) {
-        console.error("Hot & Cold: failed to fetch articles", err);
+        console.error("Hot & Cold: failed to load daily words", err);
         const fallback =
-          "Could not load headlines from The Daily Collegian articles database (Postgres). Check your connection and try again.";
+          "Could not load today’s puzzle from The Daily Collegian articles database (Postgres). Check your connection and try again.";
         const msg = err instanceof Error && err.message ? err.message : fallback;
         setHeadlinesError(msg);
-        setArticles([]);
+        setDailyWords([]);
+        setDailyWordsMeta(null);
       } finally {
         setLoading(false);
       }
     };
-    fetchArticles();
+    loadDailyWords();
   }, []);
 
   useEffect(() => {
@@ -477,9 +337,11 @@ export default function HotNCold() {
     analytics.logStart({ difficulty: "daily" });
   }, [analytics]);
 
-  // Keep feedback focused on the current round.
+  // Keep feedback focused on the current round; reset dev similarity hints per round.
   useEffect(() => {
     setFeedback("");
+    setOpenAiErrorHint(null);
+    setLastSimilaritySource(null);
   }, [roundIndex]);
 
   useEffect(() => {
@@ -573,6 +435,17 @@ export default function HotNCold() {
         scoreSource = "exact";
         setOpenAiErrorHint(null);
       } else {
+        const simKey = similaritySessionStorageKey(
+          secretWord.toLowerCase(),
+          trimmed.toLowerCase()
+        );
+        const sessionEntries = readSimilaritySessionEntries(getTodayKey());
+        const fromSession = sessionEntries[simKey];
+        if (typeof fromSession === "number") {
+          scoreVal = fromSession;
+          scoreSource = "openai-session-cache";
+          setOpenAiErrorHint(null);
+        } else {
         try {
           const res = await fetch(SIMILARITY_API_ENDPOINT, {
             method: "POST",
@@ -587,8 +460,12 @@ export default function HotNCold() {
           }
           if (res.ok && typeof data.score === "number") {
             scoreVal = data.score;
-            scoreSource = "openai";
+            const xCache = (res.headers.get("X-Cache") || "").toUpperCase();
+            scoreSource = xCache === "HIT" ? "openai-server-cache" : "openai";
             setOpenAiErrorHint(null);
+            const nextEntries = readSimilaritySessionEntries(getTodayKey());
+            nextEntries[simKey] = scoreVal;
+            writeSimilaritySessionEntries(getTodayKey(), nextEntries);
           } else {
             scoreVal = similarityScore(trimmed, secretWord);
             scoreSource = "levenshtein";
@@ -608,6 +485,7 @@ export default function HotNCold() {
             "Could not reach word-similarity. Use `netlify dev` (not `npm run dev` alone) so functions and OPENAI_API_KEY load."
           );
         }
+        }
       }
     } finally {
       setGuessLoading(false);
@@ -615,6 +493,7 @@ export default function HotNCold() {
 
     const temp = temperatureFromScore(scoreVal);
     const entry = { text: trimmed, score: scoreVal, temp, scoreSource };
+    setLastSimilaritySource(scoreSource);
     setGuesses((g) => [...g, entry]);
     setInput("");
 
@@ -655,6 +534,13 @@ export default function HotNCold() {
     );
   }, [guesses, showLatest]);
 
+  const bestScoringGuess = useMemo(() => {
+    if (!guesses.length) return null;
+    return guesses.reduce((best, g) =>
+      (g?.score ?? 0) > (best?.score ?? -1) ? g : best
+    );
+  }, [guesses]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900 flex items-center justify-center">
@@ -674,11 +560,25 @@ export default function HotNCold() {
                 "Could not build today’s puzzle from The Daily Collegian articles database."}
             </p>
             <p className="text-slate-600 text-sm">
-              Secret words are <span className="font-bold">only</span> taken from headline text in
-              the Postgres <code className="text-xs bg-slate-100 px-1 rounded">articles</code> table
-              (via <code className="text-xs bg-slate-100 px-1 rounded">get-articles</code>). There is
-              no backup word list.
+              Secret words are <span className="font-bold">only</span> taken from Collegian article
+              headlines and body text in the Postgres{" "}
+              <code className="text-xs bg-slate-100 px-1 rounded">articles</code> table (via{" "}
+              <code className="text-xs bg-slate-100 px-1 rounded">get-hotncold-daily-words</code>).
+              Candidates are filtered with OpenAI&apos;s moderation API when configured. There is no
+              backup word list.
             </p>
+            {import.meta.env.DEV && dailyWordsMeta ? (
+              <div className="dev-debug-panel mt-4 text-left">
+                <div className="dev-debug-panel__title">Developer · load meta</div>
+                <ul className="dev-debug-panel__list">
+                  <li>
+                    <code>poolSize</code>: {String(dailyWordsMeta.poolSize)} ·{" "}
+                    <code>moderationSkipped</code>: {String(dailyWordsMeta.moderationSkipped)} ·{" "}
+                    <code>batches</code>: {String(dailyWordsMeta.moderationBatches)}
+                  </li>
+                </ul>
+              </div>
+            ) : null}
           </div>
           <DisclaimerFooter />
         </div>
@@ -711,14 +611,68 @@ export default function HotNCold() {
             </p>
 
             {import.meta.env.DEV ? (
-              <div className="correct-word">
-                Correct word: <span style={{ fontWeight: 800 }}>{secretWord}</span>
-              </div>
-            ) : null}
-
-            {openAiErrorHint ? (
-              <div className="openai-debug">
-                <span style={{ fontWeight: 800 }}>OpenAI debug:</span> {openAiErrorHint}
+              <div className="dev-debug-panel">
+                <div className="dev-debug-panel__title">Developer · testing HUD</div>
+                <ul className="dev-debug-panel__list">
+                  <li>
+                    <strong>All {DAILY_LIMIT} answers today (order = rounds):</strong>{" "}
+                    {dailyWords.length ? dailyWords.join(", ") : "—"}
+                  </li>
+                  <li>
+                    <strong>This round secret:</strong> <code>{secretWord || "—"}</code>
+                  </li>
+                  <li>
+                    <strong>Daily words fetch cache:</strong>{" "}
+                    {dailyWordsFromSessionCache
+                      ? `sessionStorage hit (${DAILY_WORDS_SESSION_CACHE_KEY}, 1h TTL — same idea as Redacted hh_news_cache)`
+                      : "network (GET also carries Cache-Control for Netlify CDN until UTC midnight)"}
+                    <br />
+                    <strong>Similarity client cache:</strong>{" "}
+                    <code>{SIMILARITY_SESSION_CACHE_KEY}</code> · up to {SIMILARITY_ENTRY_CAP}{" "}
+                    guess+secret score pairs per UTC day
+                  </li>
+                  <li>
+                    <strong>Daily words (server):</strong>{" "}
+                    <code>get-hotncold-daily-words</code>
+                    {dailyWordsMeta?.dateKey ? (
+                      <>
+                        {" "}
+                        · UTC date <code>{dailyWordsMeta.dateKey}</code>
+                      </>
+                    ) : null}
+                    {dailyWordsMeta?.poolSize != null ? (
+                      <>
+                        {" "}
+                        · candidate pool <code>{dailyWordsMeta.poolSize}</code> tokens
+                      </>
+                    ) : null}
+                    <br />
+                    <strong>Moderation filter:</strong>{" "}
+                    {dailyWordsMeta == null
+                      ? "—"
+                      : dailyWordsMeta.moderationSkipped
+                        ? "skipped or failed — list may include words OpenAI would flag (check OPENAI_API_KEY and function logs)."
+                        : `ran (${dailyWordsMeta.moderationModel ?? "model ?"}, ${dailyWordsMeta.moderationBatches ?? 0} moderation API batch(es)).`}
+                  </li>
+                  <li>
+                    <strong>Last submitted guess &quot;closeness&quot;:</strong>{" "}
+                    {similaritySourceLabel(lastSimilaritySource)}
+                    {guessLoading ? " (request in progress…)" : ""}
+                  </li>
+                  <li>
+                    <strong>Progress bar (best this round):</strong>{" "}
+                    {guesses.length === 0
+                      ? "—"
+                      : `${bestSimilarity.toFixed(3)} max score · source ${similaritySourceLabel(
+                          bestScoringGuess?.scoreSource
+                        )}`}
+                  </li>
+                </ul>
+                {openAiErrorHint ? (
+                  <div className="dev-debug-panel__warn">
+                    <strong>word-similarity (embeddings) last error:</strong> {openAiErrorHint}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -738,7 +692,8 @@ export default function HotNCold() {
               </p>
               <p className="text-slate-500 text-xs mt-4 text-center">
                 Today’s secret words came from The Daily Collegian{" "}
-                <code className="bg-slate-100 px-1 rounded">articles</code> database.
+                <code className="bg-slate-100 px-1 rounded">articles</code> headlines and article
+                text (moderation-filtered when OpenAI is available).
               </p>
             </div>
             <EmailSignup gameName="Hot & Cold" />
@@ -802,10 +757,17 @@ export default function HotNCold() {
                           key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
                           className="guess-item"
                         >
-                          <span>{g.text}</span>
-                          <span style={{ color: g?.temp?.color ?? "#777777" }}>
-                            {g.temp.label}
-                          </span>
+                          <div className="guess-item__row">
+                            <span>{g.text}</span>
+                            <span style={{ color: g?.temp?.color ?? "#777777" }}>
+                              {g.temp.label}
+                            </span>
+                          </div>
+                          {import.meta.env.DEV ? (
+                            <div className="guess-source">
+                              score {g.score.toFixed(3)} · {g.scoreSource ?? "?"}
+                            </div>
+                          ) : null}
                         </div>
                       ))
                     )}

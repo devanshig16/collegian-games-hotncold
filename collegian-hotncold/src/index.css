@@ -199,9 +199,17 @@ button:active {
 
 .guess-item {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 2px;
   padding: 8px 0;
   border-bottom: 1px solid #eee;
+}
+
+.guess-item__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
 }
 
 .progress-container {
@@ -232,6 +240,61 @@ button:active {
   color: #9a3412;
   font-size: 14px;
   text-align: center;
+}
+
+/* Developer HUD — only rendered when import.meta.env.DEV is true */
+.dev-debug-panel {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  background: #f0f9ff;
+  border: 1px solid #7dd3fc;
+  border-radius: 8px;
+  color: #0c4a6e;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.dev-debug-panel__title {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #0369a1;
+  margin-bottom: 10px;
+}
+
+.dev-debug-panel__list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.dev-debug-panel__list li {
+  margin-bottom: 6px;
+}
+
+.dev-debug-panel__list code {
+  font-size: 11px;
+  background: #e0f2fe;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.dev-debug-panel__warn {
+  color: #9a3412;
+  list-style-type: none;
+  margin-left: -1rem;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+}
+
+.dev-debug-panel .guess-source {
+  font-size: 11px;
+  color: #0369a1;
+  font-weight: 600;
 }
 
 .history-container {
