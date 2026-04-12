@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:alg": "node scripts/test-hotncold-algorithms.mjs"
+    "test:alg": "node scripts/test-hotncold-algorithms.mjs",
+    "test:openai": "node scripts/test-openai-embeddings.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",

@@ -8,8 +8,8 @@ import useGameAnalytics from "./hooks/useGameAnalytics";
 const DAILY_WORDS_ENDPOINT = "/.netlify/functions/get-hotncold-daily-words";
 const SIMILARITY_API_ENDPOINT = "/.netlify/functions/word-similarity";
 const DAILY_LIMIT = 1;
-const MAX_GUESSES_PER_ROUND = 10;
-/** v2: single secret per day (v1 had five rounds). */
+const MAX_GUESSES_PER_DAY = 10;
+/** Single secret per UTC day; progress shape v2. */
 const DAILY_STORAGE_KEY = "hotncold_daily_progress_v2";
 
 /** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
@@ -210,11 +210,13 @@ function temperatureFromScore(score) {
   };
 }
 
+/** Next puzzle when UTC date rolls (matches `getTodayKey()` / server `dateKey`). */
 const getTimeUntilReset = () => {
   const now = new Date();
-  const nextReset = new Date(now);
-  nextReset.setHours(24, 0, 0, 0);
-  const diffMs = Math.max(nextReset - now, 0);
+  const nextUtcMidnight = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0)
+  );
+  const diffMs = Math.max(nextUtcMidnight - now, 0);
   const totalMinutes = Math.ceil(diffMs / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -415,7 +417,7 @@ export default function HotNCold() {
     const trimmed = input.trim();
     if (!trimmed || gameState !== "playing" || guessLoading) return;
 
-    if (guesses.length >= MAX_GUESSES_PER_ROUND) return;
+    if (guesses.length >= MAX_GUESSES_PER_DAY) return;
 
     const prevTexts = new Set(guesses.map((g) => g.text.toLowerCase()));
     if (prevTexts.has(trimmed.toLowerCase())) {
@@ -505,7 +507,7 @@ export default function HotNCold() {
 
     setFeedback(`${temp.label} — ${distanceOff(scoreVal)} off`);
 
-    if (guesses.length + 1 >= MAX_GUESSES_PER_ROUND) {
+    if (guesses.length + 1 >= MAX_GUESSES_PER_DAY) {
       advanceOrFinish(false);
     }
   };
@@ -602,7 +604,7 @@ export default function HotNCold() {
             <h1>Hot &amp; Cold</h1>
 
             <div className="meta-line">
-              Guesses {guesses.length}/{MAX_GUESSES_PER_ROUND} · One word today
+              Guesses {guesses.length}/{MAX_GUESSES_PER_DAY} · One word today (UTC day)
             </div>
 
             <p className="description">
@@ -791,13 +793,13 @@ export default function HotNCold() {
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck="false"
-                disabled={guesses.length >= MAX_GUESSES_PER_ROUND || guessLoading}
+                disabled={guesses.length >= MAX_GUESSES_PER_DAY || guessLoading}
               />
               <button
                 type="submit"
                 disabled={
                   !input.trim() ||
-                  guesses.length >= MAX_GUESSES_PER_ROUND ||
+                  guesses.length >= MAX_GUESSES_PER_DAY ||
                   guessLoading
                 }
               >
@@ -813,7 +815,9 @@ export default function HotNCold() {
               <div className="history-container">
                 <p className="progress-hint">
                   {guesses.length === 0 ? (
-                    <>Off = distance from the secret (0 = exact); higher means farther.</>
+                    <>
+                      Off = (1 - similarity) × 100; <strong>lower</strong> is closer (0 = exact).
+                    </>
                   ) : (
                     <>
                       Best today: <strong>{distanceOff(bestSimilarity)} off</strong> — lower is
@@ -839,9 +843,9 @@ export default function HotNCold() {
                         No guesses yet.
                       </div>
                     ) : (
-                      displayGuesses.map((g) => (
+                      displayGuesses.map((g, idx) => (
                         <div
-                          key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
+                          key={`${idx}-${g.text}-${g.score}-${g.scoreSource ?? "x"}-${g.temp?.key ?? ""}`}
                           className="guess-item"
                         >
                           <div className="guess-item__row">
