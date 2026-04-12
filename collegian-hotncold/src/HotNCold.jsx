@@ -9,7 +9,8 @@ const DAILY_WORDS_ENDPOINT = "/.netlify/functions/get-hotncold-daily-words";
 const SIMILARITY_API_ENDPOINT = "/.netlify/functions/word-similarity";
 const DAILY_LIMIT = 1;
 const MAX_GUESSES_PER_DAY = 10;
-/** Single secret per UTC day; progress shape v2. */
+const MAX_GUESS_INPUT_LENGTH = 64;
+/** Single secret per UTC day; progress shape v2 (+ guesses[] since v2.1). */
 const DAILY_STORAGE_KEY = "hotncold_daily_progress_v2";
 
 /** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
@@ -200,6 +201,35 @@ function temperatureFromScore(score) {
   };
 }
 
+/** How each guess was scored (for analytics / debugging) */
+/** @typedef {'openai' | 'openai-session-cache' | 'openai-server-cache' | 'levenshtein' | 'exact'} ScoreSource */
+
+/** @param {unknown} raw */
+function hydrateGuessesFromStorage(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (g) =>
+        g &&
+        typeof g === "object" &&
+        typeof g.text === "string" &&
+        typeof g.score === "number" &&
+        !Number.isNaN(g.score)
+    )
+    .slice(0, MAX_GUESSES_PER_DAY)
+    .map((g) => {
+      const score = Math.min(1, Math.max(0, g.score));
+      return {
+        text: g.text.trim(),
+        score,
+        temp: temperatureFromScore(score),
+        scoreSource:
+          typeof g.scoreSource === "string" ? /** @type {ScoreSource} */ (g.scoreSource) : "levenshtein",
+      };
+    })
+    .filter((g) => g.text.length > 0);
+}
+
 /** Next puzzle when UTC date rolls (matches `getTodayKey()` / server `dateKey`). */
 const getTimeUntilReset = () => {
   const now = new Date();
@@ -212,9 +242,6 @@ const getTimeUntilReset = () => {
   const minutes = totalMinutes % 60;
   return { hours, minutes };
 };
-
-/** How each guess was scored (for analytics / debugging) */
-/** @typedef {'openai' | 'openai-session-cache' | 'openai-server-cache' | 'levenshtein' | 'exact'} ScoreSource */
 
 /** @param {ScoreSource | null | undefined} s */
 function similaritySourceLabel(s) {
@@ -241,7 +268,7 @@ export default function HotNCold() {
     readSavedProgress()?.completed ? "daily-complete" : "playing"
   );
   const [input, setInput] = useState("");
-  const [guesses, setGuesses] = useState([]);
+  const [guesses, setGuesses] = useState(() => hydrateGuessesFromStorage(readSavedProgress()?.guesses));
   const [shake, setShake] = useState(false);
   const [guessLoading, setGuessLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -364,8 +391,54 @@ export default function HotNCold() {
     saveProgress({
       score,
       completed: gameState === "daily-complete",
+      guesses: guesses.map((g) => ({
+        text: g.text,
+        score: g.score,
+        scoreSource: g.scoreSource,
+      })),
     });
-  }, [gameState, saveProgress, score]);
+  }, [gameState, saveProgress, score, guesses]);
+
+  /** If progress was saved mid-flow, finish analytics + state once `secretWord` exists. */
+  useEffect(() => {
+    const w = secretWord.trim();
+    if (!w || gameState !== "playing") return;
+    const won = guesses.some((g) => g.text.toLowerCase() === w.toLowerCase());
+    if (won) {
+      if (!roundCompletedRef.current) {
+        roundCompletedRef.current = true;
+        if (!dailyCompleteLoggedRef.current) {
+          dailyCompleteLoggedRef.current = true;
+          analytics.logWin({ guesses_used: guesses.length });
+          analytics.logAction("daily_complete", { final_score: 1, total_rounds: 1 });
+        }
+        setScore(1);
+        setShowConfetti(true);
+        setGameState("daily-complete");
+        setFeedback("Correct! You found today's word.");
+      }
+      return;
+    }
+    if (guesses.length < MAX_GUESSES_PER_DAY) return;
+    if (!roundCompletedRef.current) {
+      roundCompletedRef.current = true;
+      if (!dailyCompleteLoggedRef.current) {
+        dailyCompleteLoggedRef.current = true;
+        analytics.logLoss({ reason: "max_guesses" });
+        analytics.logAction("daily_complete", { final_score: 0, total_rounds: 1 });
+      }
+      setScore(0);
+      setGameState("daily-complete");
+      setFeedback("Out of guesses for today.");
+    }
+  }, [secretWord, guesses, gameState, analytics]);
+
+  useEffect(() => {
+    if (readSavedProgress()?.completed) {
+      roundCompletedRef.current = true;
+      dailyCompleteLoggedRef.current = true;
+    }
+  }, []);
 
   const advanceOrFinish = useCallback(
     (won) => {
@@ -384,7 +457,6 @@ export default function HotNCold() {
         }
         setShowConfetti(true);
         setGameState("daily-complete");
-        saveProgress({ score: 1, completed: true });
       } else {
         analytics.logLoss({ reason: "max_guesses" });
         if (!dailyCompleteLoggedRef.current) {
@@ -396,22 +468,23 @@ export default function HotNCold() {
         }
         setScore(0);
         setGameState("daily-complete");
-        saveProgress({ score: 0, completed: true });
       }
     },
-    [analytics, guesses.length, saveProgress]
+    [analytics, guesses.length]
   );
 
   const submitGuess = async (e) => {
     e.preventDefault();
-    const trimmed = input.trim();
+    const trimmed = input.trim().slice(0, MAX_GUESS_INPUT_LENGTH);
     if (!trimmed || gameState !== "playing" || guessLoading) return;
+    if (!secretWord.trim()) return;
 
     if (guesses.length >= MAX_GUESSES_PER_DAY) return;
 
     const prevTexts = new Set(guesses.map((g) => g.text.toLowerCase()));
     if (prevTexts.has(trimmed.toLowerCase())) {
       setShake(true);
+      setFeedback("You already tried that word.");
       setTimeout(() => setShake(false), 500);
       return;
     }
@@ -757,8 +830,9 @@ export default function HotNCold() {
                 id="guessInput"
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => setInput(e.target.value.slice(0, MAX_GUESS_INPUT_LENGTH))}
                 placeholder="Enter your guess"
+                maxLength={MAX_GUESS_INPUT_LENGTH}
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck="false"
@@ -825,7 +899,9 @@ export default function HotNCold() {
                           </div>
                           {import.meta.env.DEV ? (
                             <div className="guess-source">
-                              score {g.score.toFixed(3)} · {g.scoreSource ?? "?"}
+                              score{" "}
+                              {Number.isFinite(g.score) ? g.score.toFixed(3) : "—"} ·{" "}
+                              {g.scoreSource ?? "?"}
                             </div>
                           ) : null}
                         </div>

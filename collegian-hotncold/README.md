@@ -50,7 +50,7 @@ Aligned with other Collegian games (e.g. **Redacted** `sessionStorage` for `hh_n
 
 - **Secret word (`get-hotncold-daily-words`):** Response includes **`Cache-Control: public, s-maxage=…, max-age=…`** so Netlify’s CDN can cache the JSON until **UTC midnight** (empty-pool responses use `no-store`). The JSON includes **`article`** (`url`, `headline`, optional `image` from the DB) for the Collegian story where the daily token **first** appeared (headline before body, newest articles first). The UI shows a **compact source card** (headline link + external-link icon, no hero image). The client mirrors **`sessionStorage`** (`hotncold_daily_words_v4`, **1 hour TTL**, same UTC `dateKey`) so reloads in one session skip Postgres + moderation when still fresh.
 - **Similarity (`word-similarity`):** **In-memory LRU** (~2500 pairs) on the warm function instance returns **`X-Cache: HIT`** without calling OpenAI again. The client stores successful embedding scores in **`sessionStorage`** (`hotncold_similarity_v1`, capped entries per UTC day) so the same guess+secret pair does not POST again. **POST** responses are not CDN-cached; server memory + browser session handle repeat traffic.
-- **Daily progress:** `localStorage` key **`hotncold_daily_progress_v2`** (score + completed for the single daily word).
+- **Daily progress:** `localStorage` key **`hotncold_daily_progress_v2`** (score, completed, and guess history for reloads the same UTC day).
 
 Moderation reduces violent, sexual, hateful, self-harm, and related categories per [OpenAI’s moderation schema](https://platform.openai.com/docs/guides/moderation); it does **not** target “weird” or rare vocabulary specifically.
 
