@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Confetti from "react-confetti";
-import { Loader } from "lucide-react";
+import { ExternalLink, Loader } from "lucide-react";
 import DisclaimerFooter from "./components/DisclaimerFooter";
 import EmailSignup from "./components/EmailSignup";
 import useGameAnalytics from "./hooks/useGameAnalytics";
@@ -604,17 +604,26 @@ export default function HotNCold() {
             </p>
 
             {dailyWordsMeta?.article?.url ? (
-              <p className="article-source">
-                Today&apos;s word is from{" "}
+              <div className="article-source-card">
+                <p className="article-source-card__eyebrow">Source story</p>
                 <a
+                  className="article-source-card__link"
                   href={dailyWordsMeta.article.url}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {dailyWordsMeta.article.headline || "this Daily Collegian article"}
+                  <span className="article-source-card__title">
+                    {dailyWordsMeta.article.headline || "Daily Collegian article"}
+                  </span>
+                  <ExternalLink
+                    className="article-source-card__icon"
+                    size={20}
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
                 </a>
-                .
-              </p>
+                <p className="article-source-card__meta">The Daily Collegian · opens in a new tab</p>
+              </div>
             ) : null}
 
             {import.meta.env.DEV ? (
