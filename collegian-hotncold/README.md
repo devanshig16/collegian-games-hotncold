@@ -25,6 +25,14 @@ npm run dev
 npm run build
 ```
 
+## Algorithm checks (no DB / OpenAI)
+
+```bash
+npm run test:alg
+```
+
+Runs `scripts/test-hotncold-algorithms.mjs`: word extraction + HTML strip, deterministic shuffle, date seed, and Levenshtein similarity scores (same math as the client fallback).
+
 ## Environment variables
 
 | Variable | Where | Purpose |
