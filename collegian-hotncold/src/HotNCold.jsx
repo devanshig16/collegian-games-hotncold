@@ -7,12 +7,13 @@ import useGameAnalytics from "./hooks/useGameAnalytics";
 
 const DAILY_WORDS_ENDPOINT = "/.netlify/functions/get-hotncold-daily-words";
 const SIMILARITY_API_ENDPOINT = "/.netlify/functions/word-similarity";
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = 1;
 const MAX_GUESSES_PER_ROUND = 10;
-const DAILY_STORAGE_KEY = "hotncold_daily_progress";
+/** v2: single secret per day (v1 had five rounds). */
+const DAILY_STORAGE_KEY = "hotncold_daily_progress_v2";
 
 /** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
-const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v1";
+const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v2";
 const SIMILARITY_SESSION_CACHE_KEY = "hotncold_similarity_v1";
 const DAILY_WORDS_SESSION_TTL_MS = 60 * 60 * 1000;
 const SIMILARITY_ENTRY_CAP = 500;
@@ -223,9 +224,6 @@ export default function HotNCold() {
   const [lastSimilaritySource, setLastSimilaritySource] = useState(null);
   const [dailyWordsFromSessionCache, setDailyWordsFromSessionCache] = useState(false);
 
-  const [roundIndex, setRoundIndex] = useState(
-    () => readSavedProgress()?.roundIndex ?? 0
-  );
   const [score, setScore] = useState(() => readSavedProgress()?.score ?? 0);
   const [gameState, setGameState] = useState(() =>
     readSavedProgress()?.completed ? "daily-complete" : "playing"
@@ -243,8 +241,8 @@ export default function HotNCold() {
   const dailyCompleteLoggedRef = useRef(false);
   const gameStartLoggedRef = useRef(false);
 
-  const analytics = useGameAnalytics("hot-n-cold", roundIndex);
-  const secretWord = dailyWords[roundIndex] ?? "";
+  const analytics = useGameAnalytics("hot-n-cold", 0);
+  const secretWord = dailyWords[0] ?? "";
 
   const saveProgress = useCallback((next) => {
     localStorage.setItem(
@@ -346,21 +344,13 @@ export default function HotNCold() {
     analytics.logStart({ difficulty: "daily" });
   }, [analytics]);
 
-  // Keep feedback focused on the current round; reset dev similarity hints per round.
-  useEffect(() => {
-    setFeedback("");
-    setOpenAiErrorHint(null);
-    setLastSimilaritySource(null);
-  }, [roundIndex]);
-
   useEffect(() => {
     if (readSavedProgress()?.completed) return;
     saveProgress({
-      roundIndex,
       score,
       completed: gameState === "daily-complete",
     });
-  }, [gameState, roundIndex, saveProgress, score]);
+  }, [gameState, saveProgress, score]);
 
   const advanceOrFinish = useCallback(
     (won) => {
@@ -369,54 +359,32 @@ export default function HotNCold() {
 
       if (won) {
         analytics.logWin({ guesses_used: guesses.length + 1 });
-        const nextScore = score + 1;
-        setScore(nextScore);
-        if (roundIndex + 1 >= DAILY_LIMIT) {
-          if (!dailyCompleteLoggedRef.current) {
-            dailyCompleteLoggedRef.current = true;
-            analytics.logAction("daily_complete", {
-              final_score: nextScore,
-              total_rounds: DAILY_LIMIT,
-            });
-          }
-          setShowConfetti(true);
-          setGameState("daily-complete");
-          saveProgress({
-            roundIndex: DAILY_LIMIT,
-            score: nextScore,
-            completed: true,
+        setScore(1);
+        if (!dailyCompleteLoggedRef.current) {
+          dailyCompleteLoggedRef.current = true;
+          analytics.logAction("daily_complete", {
+            final_score: 1,
+            total_rounds: 1,
           });
-        } else {
-          roundCompletedRef.current = false;
-          setGuesses([]);
-          setInput("");
-          setRoundIndex((r) => r + 1);
         }
+        setShowConfetti(true);
+        setGameState("daily-complete");
+        saveProgress({ score: 1, completed: true });
       } else {
         analytics.logLoss({ reason: "max_guesses" });
-        if (roundIndex + 1 >= DAILY_LIMIT) {
-          if (!dailyCompleteLoggedRef.current) {
-            dailyCompleteLoggedRef.current = true;
-            analytics.logAction("daily_complete", {
-              final_score: score,
-              total_rounds: DAILY_LIMIT,
-            });
-          }
-          setGameState("daily-complete");
-          saveProgress({
-            roundIndex: DAILY_LIMIT,
-            score,
-            completed: true,
+        if (!dailyCompleteLoggedRef.current) {
+          dailyCompleteLoggedRef.current = true;
+          analytics.logAction("daily_complete", {
+            final_score: 0,
+            total_rounds: 1,
           });
-        } else {
-          roundCompletedRef.current = false;
-          setGuesses([]);
-          setInput("");
-          setRoundIndex((r) => r + 1);
         }
+        setScore(0);
+        setGameState("daily-complete");
+        saveProgress({ score: 0, completed: true });
       }
     },
-    [analytics, guesses.length, roundIndex, saveProgress, score]
+    [analytics, guesses.length, saveProgress]
   );
 
   const submitGuess = async (e) => {
@@ -611,14 +579,13 @@ export default function HotNCold() {
             <h1>Hot &amp; Cold</h1>
 
             <div className="meta-line">
-              {score}/{DAILY_LIMIT} · Round {Math.min(roundIndex + 1, DAILY_LIMIT)}/
-              {DAILY_LIMIT}
+              Guesses {guesses.length}/{MAX_GUESSES_PER_ROUND} · One word today
             </div>
 
             <p className="description">
-              Each day you play <strong>{DAILY_LIMIT} rounds</strong> — one secret word per round
-              ({DAILY_LIMIT} different words total). After each guess you get a temperature and an{" "}
-              <strong>off</strong> number: <strong>lower is closer</strong> (0 = exact).
+              Each day there is <strong>one</strong> secret word from The Daily Collegian. After each
+              guess you get a temperature and an <strong>off</strong> number:{" "}
+              <strong>lower is closer</strong> (0 = exact).
             </p>
 
             {import.meta.env.DEV ? (
@@ -626,16 +593,8 @@ export default function HotNCold() {
                 <div className="dev-debug-panel__title">Developer · testing HUD</div>
                 <ul className="dev-debug-panel__list">
                   <li>
-                    <strong>Today’s {DAILY_LIMIT} secret words (round 1 → round {DAILY_LIMIT}):</strong>{" "}
-                    {dailyWords.length ? dailyWords.join(", ") : "—"}
-                    <br />
-                    <span style={{ fontWeight: 500, fontSize: "12px" }}>
-                      Not five guesses for one word — each round has its own answer; you only see
-                      the current round’s word in play.
-                    </span>
-                  </li>
-                  <li>
-                    <strong>This round secret:</strong> <code>{secretWord || "—"}</code>
+                    <strong>Today’s secret word:</strong>{" "}
+                    <code>{secretWord || "—"}</code>
                   </li>
                   <li>
                     <strong>Daily words fetch cache:</strong>{" "}
@@ -676,7 +635,7 @@ export default function HotNCold() {
                     {guessLoading ? " (request in progress…)" : ""}
                   </li>
                   <li>
-                    <strong>Progress bar (best this round):</strong>{" "}
+                    <strong>Progress bar (best today):</strong>{" "}
                     {guesses.length === 0
                       ? "—"
                       : `${bestSimilarity.toFixed(3)} max score · source ${similaritySourceLabel(
@@ -702,20 +661,40 @@ export default function HotNCold() {
           <div className="space-y-4">
             <div className="text-center">
               <h2 className="text-xl font-black text-slate-900">Daily complete</h2>
-              <p className="text-slate-600 mt-2">
-                You scored <span className="font-bold text-blue-600">{score}</span> out of{" "}
-                {DAILY_LIMIT} today.
-              </p>
-              <p className="text-slate-500 text-sm mt-4">
-                Next puzzle in{" "}
-                <span className="font-bold text-slate-800">
-                  {resetCountdown.hours}h {resetCountdown.minutes}m
-                </span>
-              </p>
+              {score >= 1 ? (
+                <p className="text-slate-600 mt-2">
+                  You found <span className="font-bold text-blue-600">today’s word</span>. Come back
+                  tomorrow for a new puzzle.
+                </p>
+              ) : (
+                <p className="text-slate-600 mt-2">
+                  Today’s word was{" "}
+                  <span className="font-bold text-slate-900">
+                    {dailyWords[0] ? (
+                      <code className="bg-slate-100 px-2 py-0.5 rounded">{dailyWords[0]}</code>
+                    ) : (
+                      "—"
+                    )}
+                  </span>
+                  . Next puzzle in{" "}
+                  <span className="font-bold text-slate-800">
+                    {resetCountdown.hours}h {resetCountdown.minutes}m
+                  </span>
+                  .
+                </p>
+              )}
+              {score >= 1 ? (
+                <p className="text-slate-500 text-sm mt-4">
+                  Next puzzle in{" "}
+                  <span className="font-bold text-slate-800">
+                    {resetCountdown.hours}h {resetCountdown.minutes}m
+                  </span>
+                </p>
+              ) : null}
               <p className="text-slate-500 text-xs mt-4 text-center">
-                Today’s secret words came from The Daily Collegian{" "}
-                <code className="bg-slate-100 px-1 rounded">articles</code> headlines and article
-                text (moderation-filtered when OpenAI is available).
+                Today’s word came from The Daily Collegian{" "}
+                <code className="bg-slate-100 px-1 rounded">articles</code> headlines and article text
+                (moderation-filtered when OpenAI is available).
               </p>
             </div>
             <EmailSignup gameName="Hot & Cold" />
@@ -761,8 +740,8 @@ export default function HotNCold() {
                     <>Off = distance from the secret (0 = exact); higher means farther.</>
                   ) : (
                     <>
-                      Best this round: <strong>{distanceOff(bestSimilarity)} off</strong> — lower
-                      is closer (same scale as each guess).
+                      Best today: <strong>{distanceOff(bestSimilarity)} off</strong> — lower is
+                      closer (same scale as each guess).
                     </>
                   )}
                 </p>

@@ -1,6 +1,6 @@
 # Hot & Cold
 
-Daily word-guessing game for **The Daily Collegian**. Secret words are taken **only** from recent **headlines and article body text** (`articles.title` + `articles.content`) in Postgres. Each page load calls **`get-hotncold-daily-words`**, which builds a candidate pool, runs **OpenAI Moderations** (`text-moderation-latest`) on batches of candidates, and returns five deterministic daily answers (with an unmoderated fallback if moderation is unavailable). Guess feedback uses **OpenAI embeddings** when similarity succeeds; otherwise **Levenshtein** in the browser.
+Daily word-guessing game for **The Daily Collegian**: **one secret word per UTC calendar day**. Words are taken **only** from recent **headlines and article body text** (`articles.title` + `articles.content`) in Postgres. Each page load calls **`get-hotncold-daily-words`**, which builds a candidate pool, runs **OpenAI Moderations** (`text-moderation-latest`) on batches of candidates, and returns **one** deterministic daily answer (with an unmoderated fallback if moderation is unavailable). Guess feedback uses **OpenAI embeddings** when similarity succeeds; otherwise **Levenshtein** in the browser.
 
 ## Run locally
 
@@ -42,23 +42,23 @@ Runs `scripts/test-hotncold-algorithms.mjs`: word extraction + HTML strip, deter
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_PORT` | Netlify Functions | Postgres for `get-hotncold-daily-words`, `get-articles`, email signup |
 | `OPENAI_API_KEY` | Netlify Functions | OpenAI **moderations** (daily word filter) + **embeddings** (guess similarity) |
 
-Copy values from another Collegian game’s `.env`. If `OPENAI_API_KEY` is missing or the embeddings call fails, the client uses Levenshtein for similarity only. If moderation cannot run, the daily-word function still returns five answers using the shuffled pool without moderation (see `moderationSkipped` in the JSON response).
+Copy values from another Collegian game’s `.env`. If `OPENAI_API_KEY` is missing or the embeddings call fails, the client uses Levenshtein for similarity only. If moderation cannot run, the daily-word function still returns one answer using the shuffled pool without moderation (see `moderationSkipped` in the JSON response).
 
 ## Data & caching
 
 Aligned with other Collegian games (e.g. **Redacted** `sessionStorage` for `hh_news_cache`, **Over Under** `Cache-Control` on `cfb-stats`, **TimeMachine** on IIIF functions):
 
-- **Secret words (`get-hotncold-daily-words`):** Response includes **`Cache-Control: public, s-maxage=…, max-age=…`** so Netlify’s CDN can cache the JSON until **UTC midnight** (empty-pool responses use `no-store`). The client also mirrors **Redacted-style** **`sessionStorage`** (`hotncold_daily_words_v1`, **1 hour TTL**, same UTC `dateKey`) so reloads in one session skip Postgres + moderation when still fresh.
+- **Secret word (`get-hotncold-daily-words`):** Response includes **`Cache-Control: public, s-maxage=…, max-age=…`** so Netlify’s CDN can cache the JSON until **UTC midnight** (empty-pool responses use `no-store`). The client also mirrors **Redacted-style** **`sessionStorage`** (`hotncold_daily_words_v2`, **1 hour TTL**, same UTC `dateKey`) so reloads in one session skip Postgres + moderation when still fresh.
 - **Similarity (`word-similarity`):** **In-memory LRU** (~2500 pairs) on the warm function instance returns **`X-Cache: HIT`** without calling OpenAI again. The client stores successful embedding scores in **`sessionStorage`** (`hotncold_similarity_v1`, capped entries per UTC day) so the same guess+secret pair does not POST again. **POST** responses are not CDN-cached; server memory + browser session handle repeat traffic.
-- **Daily progress:** `localStorage` (`hotncold_daily_progress`) unchanged.
+- **Daily progress:** `localStorage` key **`hotncold_daily_progress_v2`** (score + completed for the single daily word).
 
 Moderation reduces violent, sexual, hateful, self-harm, and related categories per [OpenAI’s moderation schema](https://platform.openai.com/docs/guides/moderation); it does **not** target “weird” or rare vocabulary specifically.
 
 ## Game rules
 
-- **5 rounds** per **UTC** calendar date (same `YYYY-MM-DD` as `toISOString().slice(0,10)`), deterministic shuffle + moderation pass order on the server.
-- **10 guesses** per round; duplicate guesses shake.
-- **Win** = exact match (case-insensitive). **Loss** = out of guesses for that round.
+- **One word** per **UTC** calendar date (same `YYYY-MM-DD` as `toISOString().slice(0,10)`), deterministic shuffle + moderation pass order on the server.
+- **10 guesses** per day; duplicate guesses shake.
+- **Win** = exact match (case-insensitive). **Loss** = out of guesses (word is revealed on the complete screen).
 
 ## Deploy
 

@@ -5,7 +5,7 @@ const {
   getTodayKeyUtc,
 } = require("./hotncoldWordUtils.cjs");
 
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = 1;
 const MODERATION_MODEL = "text-moderation-latest";
 
 /** Netlify CDN + browser cache (same pattern as collegian-overunder cfb-stats, timemachine IIIF). */

@@ -75,8 +75,8 @@ assert.equal(seedFromKey, 20260412, "UTC date string → numeric seed");
 
 const shDaily = seededShuffle(["w1", "w2", "w3", "w4", "w5", "w6"], seedFromKey);
 assert.equal(shDaily.length, 6, "shuffle preserves length");
-const dailyFive = shDaily.slice(0, 5);
-assert.equal(dailyFive.length, 5, "daily slice is five words");
+const dailyOne = shDaily.slice(0, 1);
+assert.equal(dailyOne.length, 1, "daily game uses one word");
 
 // --- Levenshtein / similarity (browser fallback path) ---
 assert.equal(similarityScore("hello", "hello"), 1, "exact string similarity");
