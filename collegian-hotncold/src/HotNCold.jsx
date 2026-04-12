@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Confetti from "react-confetti";
-import { Flame, Loader, Trophy } from "lucide-react";
+import { Loader } from "lucide-react";
 import DisclaimerFooter from "./components/DisclaimerFooter";
 import EmailSignup from "./components/EmailSignup";
 import useGameAnalytics from "./hooks/useGameAnalytics";
@@ -686,72 +686,44 @@ export default function HotNCold() {
     );
   }
 
-  const lastGuess = guesses.length > 0 ? guesses[guesses.length - 1] : null;
-  const lastSource = lastGuess?.scoreSource;
-
   return (
-    <div className="min-h-screen bg-slate-100 p-4 font-sans text-slate-900">
+    <div>
       {showConfetti && (
         <Confetti recycle={false} numberOfPieces={200} gravity={0.3} />
       )}
       <div className="max-w-xl mx-auto">
-        <header className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight flex items-center gap-2">
-              <Flame className="text-orange-500 shrink-0" size={28} />
-              Hot &amp; Cold
-            </h1>
-            <p className="text-slate-500 text-sm">
-              Guess the secret word — hot/cold feedback uses OpenAI when it works, otherwise
-              Levenshtein (spelling) distance.
-            </p>
-            <p className="text-slate-600 text-sm mt-2">
-              Correct word:{" "}
-              <span className="font-bold text-slate-900">{secretWord}</span>
-            </p>
-            <div className="flex flex-col gap-1.5 mt-3 text-xs font-semibold">
-              <p className="text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                Words: loaded from The Daily Collegian{" "}
-                <code className="font-mono text-[11px]">articles</code> database (Postgres,
-                recent headlines).
-              </p>
-              <p className="text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                {lastSource ? (
-                  <>
-                    Last guess scored with:{" "}
-                    <span className="text-blue-700">
-                      {lastSource === "openai"
-                        ? "OpenAI embeddings"
-                        : lastSource === "exact"
-                          ? "exact match (no OpenAI call)"
-                          : "Levenshtein — OpenAI unavailable or failed"}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Clues: each guess calls OpenAI first; if that fails, this app uses{" "}
-                    <span className="text-blue-700">Levenshtein</span> instead.
-                  </>
-                )}
-              </p>
-              {openAiErrorHint && (
-                <p className="text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 font-normal normal-case">
-                  <span className="font-bold">OpenAI debug:</span> {openAiErrorHint}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full font-bold">
-            <Trophy size={18} />
-            <span>
-              {score}/{DAILY_LIMIT} · Round {Math.min(roundIndex + 1, DAILY_LIMIT)}/
-              {DAILY_LIMIT}
-            </span>
-          </div>
+        <header className="site-header">
+          <div className="logo">The Daily Collegian</div>
+          <div className="section">Games</div>
         </header>
 
+        <main className="container">
+          <article className="game-card">
+            <h1>Hot &amp; Cold</h1>
+
+            <div className="meta-line">
+              {score}/{DAILY_LIMIT} · Round {Math.min(roundIndex + 1, DAILY_LIMIT)}/
+              {DAILY_LIMIT}
+            </div>
+
+            <p className="description">
+              Guess today’s word! After each guess, you’ll be told how "warm" or "cold" you are.
+            </p>
+
+            {import.meta.env.DEV ? (
+              <div className="correct-word">
+                Correct word: <span style={{ fontWeight: 800 }}>{secretWord}</span>
+              </div>
+            ) : null}
+
+            {openAiErrorHint ? (
+              <div className="openai-debug">
+                <span style={{ fontWeight: 800 }}>OpenAI debug:</span> {openAiErrorHint}
+              </div>
+            ) : null}
+
         {gameState === "daily-complete" ? (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+          <div className="space-y-4">
             <div className="text-center">
               <h2 className="text-xl font-black text-slate-900">Daily complete</h2>
               <p className="text-slate-600 mt-2">
@@ -772,104 +744,99 @@ export default function HotNCold() {
             <EmailSignup gameName="Hot & Cold" />
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-sm space-y-5">
-            <p className="text-sm text-slate-600">
-              Up to <span className="font-bold">{MAX_GUESSES_PER_ROUND}</span> guesses this round.
-              Same five headline-derived words for everyone today (no caching — fresh fetch each
-              visit).
-            </p>
-
-            <form onSubmit={submitGuess} className="flex flex-col gap-3">
-              <div className={`flex gap-2 ${shake ? "shake" : ""}`}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Enter your guess"
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck="false"
-                  className="flex-1 px-4 py-3 rounded-lg border-2 border-slate-200 focus:border-blue-500 focus:outline-none font-medium"
-                  disabled={guesses.length >= MAX_GUESSES_PER_ROUND || guessLoading}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || guesses.length >= MAX_GUESSES_PER_ROUND || guessLoading}
-                  className="px-5 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 min-w-[100px]"
-                >
-                  {guessLoading ? (
-                    <Loader size={18} className="animate-spin shrink-0" />
-                  ) : (
-                    "Submit"
-                  )}
-                </button>
-              </div>
+          <div className="space-y-5">
+            <form
+              onSubmit={submitGuess}
+              id="guessForm"
+              className={shake ? "shake" : ""}
+            >
+              <input
+                id="guessInput"
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Enter your guess"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                disabled={guesses.length >= MAX_GUESSES_PER_ROUND || guessLoading}
+              />
+              <button
+                type="submit"
+                disabled={
+                  !input.trim() ||
+                  guesses.length >= MAX_GUESSES_PER_ROUND ||
+                  guessLoading
+                }
+              >
+                {guessLoading ? <Loader size={18} className="animate-spin" /> : "Submit"}
+              </button>
             </form>
 
-            <div
-              id="feedback"
-              className="font-bold text-center text-slate-900 min-h-[1.25rem]"
-            >
+            <div id="feedback" className="feedback">
               {feedback}
             </div>
 
-            <div className="space-y-4">
-              <div className="progress-container w-full h-5 bg-[#eee] rounded-[10px] overflow-hidden">
-                <div
-                  className="progress-bar h-full transition-[width] duration-300 ease-in-out rounded-[10px 0 0 10px]"
-                  style={{
-                    width: `${progressWidthPct}%`,
-                    backgroundColor: progressBg,
-                  }}
-                />
-              </div>
+            <div className="game-body">
+              <div className="history-container">
+                <div className="progress-container">
+                  <div
+                    className="progress-bar"
+                    style={{
+                      width: `${progressWidthPct}%`,
+                      backgroundColor: progressBg,
+                    }}
+                  />
+                </div>
 
-              <div className="flex gap-3 history-buttons">
-                <button
-                  type="button"
-                  onClick={() => setShowLatest(true)}
-                  disabled={showLatest}
-                  className="px-3 py-2 bg-[#001e44] text-white font-bold text-sm rounded-md hover:bg-[#003366] disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  Latest 5 Guesses
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLatest(false)}
-                  disabled={!showLatest}
-                  className="px-3 py-2 bg-[#001e44] text-white font-bold text-sm rounded-md hover:bg-[#003366] disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  All Guesses
-                </button>
-              </div>
-
-              <div className="history">
-                <h2 className="font-serif text-[18px] font-bold">Your Guesses</h2>
-
-                <ul className="space-y-2 mt-2 max-h-64 overflow-y-auto">
-                  {displayGuesses.length === 0 ? (
-                    <li className="text-slate-400 text-sm py-2">No guesses yet.</li>
-                  ) : (
-                    displayGuesses.map((g) => (
-                      <li
-                        key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
-                        className="flex items-center justify-between gap-3 py-2 border-b border-slate-100"
-                      >
-                        <span className="font-bold text-slate-800 truncate px-3">{g.text}</span>
-                        <span
-                          className="text-xs font-black uppercase shrink-0 px-3"
-                          style={{ color: g?.temp?.color ?? "#777777" }}
+                <div className="history">
+                  <h2>Your Guesses</h2>
+                  <div id="historyList">
+                    {displayGuesses.length === 0 ? (
+                      <div style={{ color: "#777", padding: "8px 0" }}>
+                        No guesses yet.
+                      </div>
+                    ) : (
+                      displayGuesses.map((g) => (
+                        <div
+                          key={`${g.text}-${g.score}-${g.scoreSource ?? "legacy"}`}
+                          className="guess-item"
                         >
-                          {g.temp.label}
-                        </span>
-                      </li>
-                    ))
-                  )}
-                </ul>
+                          <span>{g.text}</span>
+                          <span style={{ color: g?.temp?.color ?? "#777777" }}>
+                            {g.temp.label}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="history-buttons">
+                  <button
+                    id="latestBtn"
+                    type="button"
+                    onClick={() => setShowLatest(true)}
+                    disabled={showLatest}
+                  >
+                    Latest 5 Guesses
+                  </button>
+                  <button
+                    id="allBtn"
+                    type="button"
+                    onClick={() => setShowLatest(false)}
+                    disabled={!showLatest}
+                  >
+                    All Guesses
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
+
+          </article>
+        </main>
 
         <DisclaimerFooter />
       </div>
