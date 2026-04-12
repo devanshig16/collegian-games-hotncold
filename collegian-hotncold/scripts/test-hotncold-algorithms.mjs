@@ -84,6 +84,14 @@ assert.equal(similarityScore("HELLO", "hello"), 1, "case-insensitive via caller 
 assert.ok(similarityScore("team", "beam") > 0.4 && similarityScore("team", "beam") < 1, "near match partial score");
 assert.ok(similarityScore("aaaa", "zzzz") < 0.3, "unrelated strings low score");
 
+function distanceOff(score) {
+  const clamped = Math.min(1, Math.max(0, Number(score) || 0));
+  return Math.round((1 - clamped) * 100);
+}
+assert.equal(distanceOff(1), 0, "exact → 0 off");
+assert.equal(distanceOff(0), 100, "zero similarity → 100 off");
+assert.equal(distanceOff(0.5), 50, "mid similarity → 50 off");
+
 // --- order independence of pool array for extraction (first-seen wins) ---
 const orderA = extractWordPoolFromArticles([
   { headline: "alpha beta", content: "" },

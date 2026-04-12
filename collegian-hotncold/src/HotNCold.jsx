@@ -117,6 +117,15 @@ function similarityScore(guess, secret) {
   return 1 - dist / maxLen;
 }
 
+/**
+ * Distance from the secret on a 0–100 scale: **higher = farther**, **0 = exact match**.
+ * Derived from the same similarity `score` in [0, 1] used for Hot / Cold bands.
+ */
+function distanceOff(score) {
+  const clamped = Math.min(1, Math.max(0, Number(score) || 0));
+  return Math.round((1 - clamped) * 100);
+}
+
 function temperatureFromScore(score) {
   // Match the categories from your provided frontend design.
   // `score` is in [0..1] where 1 is exact match.
@@ -503,7 +512,7 @@ export default function HotNCold() {
       return;
     }
 
-    setFeedback(temp.label);
+    setFeedback(`${temp.label} — ${distanceOff(scoreVal)} off`);
 
     if (guesses.length + 1 >= MAX_GUESSES_PER_ROUND) {
       advanceOrFinish(false);
@@ -607,7 +616,9 @@ export default function HotNCold() {
             </div>
 
             <p className="description">
-              Guess today’s word! After each guess, you’ll be told how "warm" or "cold" you are.
+              Each day you play <strong>{DAILY_LIMIT} rounds</strong> — one secret word per round
+              ({DAILY_LIMIT} different words total). After each guess you get a temperature and an{" "}
+              <strong>off</strong> number: <strong>lower is closer</strong> (0 = exact).
             </p>
 
             {import.meta.env.DEV ? (
@@ -615,8 +626,13 @@ export default function HotNCold() {
                 <div className="dev-debug-panel__title">Developer · testing HUD</div>
                 <ul className="dev-debug-panel__list">
                   <li>
-                    <strong>All {DAILY_LIMIT} answers today (order = rounds):</strong>{" "}
+                    <strong>Today’s {DAILY_LIMIT} secret words (round 1 → round {DAILY_LIMIT}):</strong>{" "}
                     {dailyWords.length ? dailyWords.join(", ") : "—"}
+                    <br />
+                    <span style={{ fontWeight: 500, fontSize: "12px" }}>
+                      Not five guesses for one word — each round has its own answer; you only see
+                      the current round’s word in play.
+                    </span>
                   </li>
                   <li>
                     <strong>This round secret:</strong> <code>{secretWord || "—"}</code>
@@ -666,6 +682,12 @@ export default function HotNCold() {
                       : `${bestSimilarity.toFixed(3)} max score · source ${similaritySourceLabel(
                           bestScoringGuess?.scoreSource
                         )}`}
+                    <br />
+                    <span style={{ fontWeight: 500, fontSize: "12px" }}>
+                      <strong>Off</strong> = round((1 − similarity) × 100). Embeddings measure vector
+                      similarity, not human categories (e.g. &quot;lace&quot; vs &quot;shoe&quot; can
+                      still look &quot;cold&quot;).
+                    </span>
                   </li>
                 </ul>
                 {openAiErrorHint ? (
@@ -734,6 +756,16 @@ export default function HotNCold() {
 
             <div className="game-body">
               <div className="history-container">
+                <p className="progress-hint">
+                  {guesses.length === 0 ? (
+                    <>Off = distance from the secret (0 = exact); higher means farther.</>
+                  ) : (
+                    <>
+                      Best this round: <strong>{distanceOff(bestSimilarity)} off</strong> — lower
+                      is closer (same scale as each guess).
+                    </>
+                  )}
+                </p>
                 <div className="progress-container">
                   <div
                     className="progress-bar"
@@ -760,7 +792,7 @@ export default function HotNCold() {
                           <div className="guess-item__row">
                             <span>{g.text}</span>
                             <span style={{ color: g?.temp?.color ?? "#777777" }}>
-                              {g.temp.label}
+                              {g.temp.label} · {distanceOff(g.score)} off
                             </span>
                           </div>
                           {import.meta.env.DEV ? (
