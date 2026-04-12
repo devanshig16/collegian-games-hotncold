@@ -1,6 +1,6 @@
 # Hot & Cold
 
-Daily word-guessing game for **The Daily Collegian**: **one secret word per UTC calendar day**. Words are taken **only** from recent **headlines and article body text** (`articles.title` + `articles.content`) in Postgres. Each page load calls **`get-hotncold-daily-words`**, which builds a candidate pool, runs **OpenAI Moderations** (`text-moderation-latest`) on batches of candidates, and returns **one** deterministic daily answer (with an unmoderated fallback if moderation is unavailable). Guess feedback uses **OpenAI embeddings** when similarity succeeds; otherwise **Levenshtein** in the browser.
+Daily word-guessing game for **The Daily Collegian**: **one secret word per UTC calendar day**. Words are taken **only** from recent **headlines and article body text** (`articles.title` + `articles.content`) in Postgres. Each page load calls **`get-hotncold-daily-words`**, which builds a candidate pool, runs **OpenAI Moderations** (`text-moderation-latest`) on batches of candidates, and returns **one** deterministic daily answer plus a link to the **source article** (with an unmoderated fallback if moderation is unavailable). Guess feedback uses **OpenAI embeddings** when similarity succeeds; otherwise **Levenshtein** in the browser.
 
 ## Run locally
 
@@ -48,7 +48,7 @@ Copy values from another Collegian game’s `.env`. If `OPENAI_API_KEY` is missi
 
 Aligned with other Collegian games (e.g. **Redacted** `sessionStorage` for `hh_news_cache`, **Over Under** `Cache-Control` on `cfb-stats`, **TimeMachine** on IIIF functions):
 
-- **Secret word (`get-hotncold-daily-words`):** Response includes **`Cache-Control: public, s-maxage=…, max-age=…`** so Netlify’s CDN can cache the JSON until **UTC midnight** (empty-pool responses use `no-store`). The client also mirrors **Redacted-style** **`sessionStorage`** (`hotncold_daily_words_v2`, **1 hour TTL**, same UTC `dateKey`) so reloads in one session skip Postgres + moderation when still fresh.
+- **Secret word (`get-hotncold-daily-words`):** Response includes **`Cache-Control: public, s-maxage=…, max-age=…`** so Netlify’s CDN can cache the JSON until **UTC midnight** (empty-pool responses use `no-store`). The JSON includes **`article`** (`url`, `headline`) for the Collegian story where the daily token **first** appeared (headline before body, newest articles first). The client mirrors **`sessionStorage`** (`hotncold_daily_words_v3`, **1 hour TTL**, same UTC `dateKey`) so reloads in one session skip Postgres + moderation when still fresh.
 - **Similarity (`word-similarity`):** **In-memory LRU** (~2500 pairs) on the warm function instance returns **`X-Cache: HIT`** without calling OpenAI again. The client stores successful embedding scores in **`sessionStorage`** (`hotncold_similarity_v1`, capped entries per UTC day) so the same guess+secret pair does not POST again. **POST** responses are not CDN-cached; server memory + browser session handle repeat traffic.
 - **Daily progress:** `localStorage` key **`hotncold_daily_progress_v2`** (score + completed for the single daily word).
 

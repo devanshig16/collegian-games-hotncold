@@ -13,12 +13,22 @@ const MAX_GUESSES_PER_ROUND = 10;
 const DAILY_STORAGE_KEY = "hotncold_daily_progress_v2";
 
 /** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
-const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v2";
+const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v3";
 const SIMILARITY_SESSION_CACHE_KEY = "hotncold_similarity_v1";
 const DAILY_WORDS_SESSION_TTL_MS = 60 * 60 * 1000;
 const SIMILARITY_ENTRY_CAP = 500;
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
+
+/** @param {unknown} raw */
+function normalizeArticle(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const url = "url" in raw && typeof raw.url === "string" ? raw.url.trim() : "";
+  if (!url) return null;
+  const headline =
+    "headline" in raw && typeof raw.headline === "string" ? raw.headline.trim() : "";
+  return { url, headline };
+}
 
 function readDailyWordsSessionCache(todayKey) {
   try {
@@ -289,6 +299,7 @@ export default function HotNCold() {
           );
         }
         const words = Array.isArray(data.words) ? data.words : [];
+        const article = normalizeArticle(data.article);
         setDailyWordsMeta({
           poolSize: typeof data.poolSize === "number" ? data.poolSize : null,
           moderationSkipped: data.moderationSkipped === true,
@@ -296,6 +307,7 @@ export default function HotNCold() {
           moderationBatches:
             typeof data.moderationBatches === "number" ? data.moderationBatches : null,
           dateKey: typeof data.dateKey === "string" ? data.dateKey : null,
+          article,
         });
         if (words.length < DAILY_LIMIT) {
           const poolSize =
@@ -319,6 +331,7 @@ export default function HotNCold() {
               moderationBatches:
                 typeof data.moderationBatches === "number" ? data.moderationBatches : null,
               dateKey: typeof data.dateKey === "string" ? data.dateKey : null,
+              article,
             },
           });
         }
@@ -588,6 +601,22 @@ export default function HotNCold() {
               <strong>lower is closer</strong> (0 = exact).
             </p>
 
+            {dailyWordsMeta?.article?.url ? (
+              <div className="article-source-card">
+                <a
+                  className="article-source-card__link"
+                  href={dailyWordsMeta.article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open the Collegian article that contains today&apos;s word
+                </a>
+                {dailyWordsMeta.article.headline ? (
+                  <p className="article-source-card__headline">{dailyWordsMeta.article.headline}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             {import.meta.env.DEV ? (
               <div className="dev-debug-panel">
                 <div className="dev-debug-panel__title">Developer · testing HUD</div>
@@ -595,6 +624,15 @@ export default function HotNCold() {
                   <li>
                     <strong>Today’s secret word:</strong>{" "}
                     <code>{secretWord || "—"}</code>
+                    {dailyWordsMeta?.article?.url ? (
+                      <>
+                        {" "}
+                        · article{" "}
+                        <a href={dailyWordsMeta.article.url} target="_blank" rel="noopener noreferrer">
+                          link
+                        </a>
+                      </>
+                    ) : null}
                   </li>
                   <li>
                     <strong>Daily words fetch cache:</strong>{" "}

@@ -1,6 +1,6 @@
 const { Client } = require("pg");
 const {
-  extractWordPoolFromArticles,
+  extractWordPoolWithSources,
   seededShuffle,
   getTodayKeyUtc,
 } = require("./hotncoldWordUtils.cjs");
@@ -83,7 +83,7 @@ exports.handler = async (event) => {
   try {
     await client.connect();
     const result = await client.query(`
-      SELECT title as headline, COALESCE(content, '') as content
+      SELECT title as headline, url as link, COALESCE(content, '') as content
       FROM articles
       WHERE pub_date > NOW() - INTERVAL '7 days'
       AND image_url IS NOT NULL
@@ -91,7 +91,7 @@ exports.handler = async (event) => {
     `);
 
     const rows = result.rows || [];
-    const pool = extractWordPoolFromArticles(rows);
+    const { words: pool, sourceByWord } = extractWordPoolWithSources(rows);
     if (pool.length < DAILY_LIMIT) {
       return {
         statusCode: 200,
@@ -101,6 +101,7 @@ exports.handler = async (event) => {
         },
         body: JSON.stringify({
           words: [],
+          article: null,
           poolSize: pool.length,
           message: `Need at least ${DAILY_LIMIT} playable words from Collegian headlines and article text; found ${pool.length}.`,
         }),
@@ -147,6 +148,12 @@ exports.handler = async (event) => {
     }
 
     const words = selected.slice(0, DAILY_LIMIT);
+    const dailyWord = words[0];
+    const rawArticle = dailyWord ? sourceByWord[dailyWord] : null;
+    const article =
+      rawArticle && rawArticle.url
+        ? { url: rawArticle.url, headline: rawArticle.headline || "" }
+        : null;
 
     return {
       statusCode: 200,
@@ -156,6 +163,7 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         words,
+        article,
         dateKey,
         poolSize: pool.length,
         moderationSkipped,

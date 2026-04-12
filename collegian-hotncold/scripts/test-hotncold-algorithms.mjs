@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 const require = createRequire(import.meta.url);
 const {
   extractWordPoolFromArticles,
+  extractWordPoolWithSources,
   seededShuffle,
   getTodayKeyUtc,
 } = require("../netlify/functions/hotncoldWordUtils.cjs");
@@ -45,6 +46,16 @@ function assertDeepEqual(a, b, msg) {
 console.log("Hot & Cold algorithm tests\n");
 
 // --- extractWordPoolFromArticles ---
+const withSrc = extractWordPoolWithSources([
+  {
+    headline: "Penn State wins big",
+    content: "<p>The offense scored forty points.</p>",
+    link: "https://www.psucollegian.com/test-article",
+  },
+]);
+assert.equal(withSrc.sourceByWord.penn.url, "https://www.psucollegian.com/test-article");
+assert.ok(withSrc.sourceByWord.offense.url, "body token maps to same article url");
+
 const pool1 = extractWordPoolFromArticles([
   { headline: "Penn State wins big", content: "<p>The offense scored forty points.</p>" },
 ]);

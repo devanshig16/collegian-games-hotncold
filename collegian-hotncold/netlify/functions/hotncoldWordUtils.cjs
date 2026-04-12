@@ -53,19 +53,53 @@ function pushTokensFromText(text, seen, words) {
 }
 
 /**
- * @param {Array<{ headline?: string, title?: string, content?: string }>} articles
+ * First article (headline before body, row order) wins for each token — matches pool order.
+ * @param {string} articleUrl
+ * @param {string} articleHeadline
+ */
+function pushTokensFromTextWithSource(text, seen, words, sourceByWord, articleUrl, articleHeadline) {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .split(/\s+/);
+  for (const t of tokens) {
+    const w = t.replace(/^['-]+|['-]+$/g, "");
+    if (w.length >= 4 && w.length <= 12 && !STOP_WORDS.has(w) && !seen.has(w)) {
+      seen.add(w);
+      words.push(w);
+      sourceByWord[w] = {
+        url: typeof articleUrl === "string" ? articleUrl.trim() : "",
+        headline: typeof articleHeadline === "string" ? articleHeadline.trim().slice(0, 240) : "",
+      };
+    }
+  }
+}
+
+/**
+ * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string }>} articles
+ * @returns {{ words: string[], sourceByWord: Record<string, { url: string, headline: string }> }}
+ */
+function extractWordPoolWithSources(articles) {
+  const seen = new Set();
+  const words = [];
+  /** @type {Record<string, { url: string, headline: string }>} */
+  const sourceByWord = {};
+  for (const a of articles) {
+    const headline = a.headline || a.title || "";
+    const link = (a.link || a.url || "").trim();
+    pushTokensFromTextWithSource(headline, seen, words, sourceByWord, link, headline);
+    const body = stripHtml(a.content || "");
+    if (body) pushTokensFromTextWithSource(body, seen, words, sourceByWord, link, headline);
+  }
+  return { words, sourceByWord };
+}
+
+/**
+ * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string }>} articles
  * @returns {string[]}
  */
 function extractWordPoolFromArticles(articles) {
-  const seen = new Set();
-  const words = [];
-  for (const a of articles) {
-    const headline = a.headline || a.title || "";
-    pushTokensFromText(headline, seen, words);
-    const body = stripHtml(a.content || "");
-    if (body) pushTokensFromText(body, seen, words);
-  }
-  return words;
+  return extractWordPoolWithSources(articles).words;
 }
 
 const createSeededRandom = (seed) => {
@@ -90,6 +124,7 @@ const seededShuffle = (items, seed) => {
 module.exports = {
   STOP_WORDS,
   extractWordPoolFromArticles,
+  extractWordPoolWithSources,
   seededShuffle,
   getTodayKeyUtc: () => new Date().toISOString().slice(0, 10),
 };

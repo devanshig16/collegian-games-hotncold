@@ -103,8 +103,36 @@ button:active {
 
 .description {
   color: #444;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   text-align: center;
+}
+
+.article-source-card {
+  margin: 0 auto 24px;
+  padding: 14px 16px;
+  max-width: 100%;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.article-source-card__link {
+  font-weight: 700;
+  color: #001e44;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.article-source-card__link:hover {
+  color: #003366;
+}
+
+.article-source-card__headline {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.35;
 }
 
 .meta-line {
