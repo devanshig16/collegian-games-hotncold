@@ -20,14 +20,6 @@ const SIMILARITY_ENTRY_CAP = 500;
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
-/** HTTPS image URLs only (article hero from our DB). */
-function safeArticleImageUrl(raw) {
-  if (!raw || typeof raw !== "string") return null;
-  const u = raw.trim();
-  if (!u.startsWith("https://")) return null;
-  return u;
-}
-
 /** @param {unknown} raw */
 function normalizeArticle(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -35,9 +27,7 @@ function normalizeArticle(raw) {
   if (!url) return null;
   const headline =
     "headline" in raw && typeof raw.headline === "string" ? raw.headline.trim() : "";
-  const image =
-    "image" in raw && typeof raw.image === "string" ? safeArticleImageUrl(raw.image) : null;
-  return { url, headline, image };
+  return { url, headline };
 }
 
 function readDailyWordsSessionCache(todayKey) {
@@ -614,47 +604,17 @@ export default function HotNCold() {
             </p>
 
             {dailyWordsMeta?.article?.url ? (
-              <a
-                className="article-preview"
-                href={dailyWordsMeta.article.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {dailyWordsMeta.article.image ? (
-                  <div className="article-preview__media">
-                    <img
-                      className="article-preview__img"
-                      src={dailyWordsMeta.article.image}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      onError={(e) => {
-                        const wrap = e.currentTarget.closest(".article-preview__media");
-                        if (wrap) {
-                          wrap.classList.add("article-preview__media--placeholder");
-                          e.currentTarget.remove();
-                        }
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    className="article-preview__media article-preview__media--placeholder"
-                    aria-hidden
-                  />
-                )}
-                <div className="article-preview__body">
-                  <p className="article-preview__kicker">The Daily Collegian</p>
-                  {dailyWordsMeta.article.headline ? (
-                    <p className="article-preview__title">{dailyWordsMeta.article.headline}</p>
-                  ) : (
-                    <p className="article-preview__title article-preview__title--fallback">
-                      Article containing today&apos;s word
-                    </p>
-                  )}
-                  <span className="article-preview__cta">Read full article →</span>
-                </div>
-              </a>
+              <p className="article-source">
+                Today&apos;s word is from{" "}
+                <a
+                  href={dailyWordsMeta.article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {dailyWordsMeta.article.headline || "this Daily Collegian article"}
+                </a>
+                .
+              </p>
             ) : null}
 
             {import.meta.env.DEV ? (
