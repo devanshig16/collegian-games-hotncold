@@ -51,9 +51,11 @@ const withSrc = extractWordPoolWithSources([
     headline: "Penn State wins big",
     content: "<p>The offense scored forty points.</p>",
     link: "https://www.psucollegian.com/test-article",
+    image: "https://www.psucollegian.com/content/tncms/image.jpg",
   },
 ]);
 assert.equal(withSrc.sourceByWord.penn.url, "https://www.psucollegian.com/test-article");
+assert.ok(withSrc.sourceByWord.penn.image.includes("image.jpg"), "hero image stored on token");
 assert.ok(withSrc.sourceByWord.offense.url, "body token maps to same article url");
 
 const pool1 = extractWordPoolFromArticles([

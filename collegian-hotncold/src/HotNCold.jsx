@@ -13,12 +13,20 @@ const MAX_GUESSES_PER_ROUND = 10;
 const DAILY_STORAGE_KEY = "hotncold_daily_progress_v2";
 
 /** Same pattern as Redacted `hh_news_cache`: sessionStorage + TTL. */
-const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v3";
+const DAILY_WORDS_SESSION_CACHE_KEY = "hotncold_daily_words_v4";
 const SIMILARITY_SESSION_CACHE_KEY = "hotncold_similarity_v1";
 const DAILY_WORDS_SESSION_TTL_MS = 60 * 60 * 1000;
 const SIMILARITY_ENTRY_CAP = 500;
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
+
+/** HTTPS image URLs only (article hero from our DB). */
+function safeArticleImageUrl(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const u = raw.trim();
+  if (!u.startsWith("https://")) return null;
+  return u;
+}
 
 /** @param {unknown} raw */
 function normalizeArticle(raw) {
@@ -27,7 +35,9 @@ function normalizeArticle(raw) {
   if (!url) return null;
   const headline =
     "headline" in raw && typeof raw.headline === "string" ? raw.headline.trim() : "";
-  return { url, headline };
+  const image =
+    "image" in raw && typeof raw.image === "string" ? safeArticleImageUrl(raw.image) : null;
+  return { url, headline, image };
 }
 
 function readDailyWordsSessionCache(todayKey) {
@@ -602,19 +612,47 @@ export default function HotNCold() {
             </p>
 
             {dailyWordsMeta?.article?.url ? (
-              <div className="article-source-card">
-                <a
-                  className="article-source-card__link"
-                  href={dailyWordsMeta.article.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Open the Collegian article that contains today&apos;s word
-                </a>
-                {dailyWordsMeta.article.headline ? (
-                  <p className="article-source-card__headline">{dailyWordsMeta.article.headline}</p>
-                ) : null}
-              </div>
+              <a
+                className="article-preview"
+                href={dailyWordsMeta.article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {dailyWordsMeta.article.image ? (
+                  <div className="article-preview__media">
+                    <img
+                      className="article-preview__img"
+                      src={dailyWordsMeta.article.image}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => {
+                        const wrap = e.currentTarget.closest(".article-preview__media");
+                        if (wrap) {
+                          wrap.classList.add("article-preview__media--placeholder");
+                          e.currentTarget.remove();
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="article-preview__media article-preview__media--placeholder"
+                    aria-hidden
+                  />
+                )}
+                <div className="article-preview__body">
+                  <p className="article-preview__kicker">The Daily Collegian</p>
+                  {dailyWordsMeta.article.headline ? (
+                    <p className="article-preview__title">{dailyWordsMeta.article.headline}</p>
+                  ) : (
+                    <p className="article-preview__title article-preview__title--fallback">
+                      Article containing today&apos;s word
+                    </p>
+                  )}
+                  <span className="article-preview__cta">Read full article →</span>
+                </div>
+              </a>
             ) : null}
 
             {import.meta.env.DEV ? (

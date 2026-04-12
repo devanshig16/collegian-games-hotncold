@@ -83,7 +83,7 @@ exports.handler = async (event) => {
   try {
     await client.connect();
     const result = await client.query(`
-      SELECT title as headline, url as link, COALESCE(content, '') as content
+      SELECT title as headline, url as link, image_url as image, COALESCE(content, '') as content
       FROM articles
       WHERE pub_date > NOW() - INTERVAL '7 days'
       AND image_url IS NOT NULL
@@ -152,7 +152,11 @@ exports.handler = async (event) => {
     const rawArticle = dailyWord ? sourceByWord[dailyWord] : null;
     const article =
       rawArticle && rawArticle.url
-        ? { url: rawArticle.url, headline: rawArticle.headline || "" }
+        ? {
+            url: rawArticle.url,
+            headline: rawArticle.headline || "",
+            image: rawArticle.image || "",
+          }
         : null;
 
     return {

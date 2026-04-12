@@ -56,8 +56,17 @@ function pushTokensFromText(text, seen, words) {
  * First article (headline before body, row order) wins for each token — matches pool order.
  * @param {string} articleUrl
  * @param {string} articleHeadline
+ * @param {string} articleImage
  */
-function pushTokensFromTextWithSource(text, seen, words, sourceByWord, articleUrl, articleHeadline) {
+function pushTokensFromTextWithSource(
+  text,
+  seen,
+  words,
+  sourceByWord,
+  articleUrl,
+  articleHeadline,
+  articleImage
+) {
   const tokens = text
     .toLowerCase()
     .replace(/[^a-z0-9\s'-]/g, " ")
@@ -70,32 +79,34 @@ function pushTokensFromTextWithSource(text, seen, words, sourceByWord, articleUr
       sourceByWord[w] = {
         url: typeof articleUrl === "string" ? articleUrl.trim() : "",
         headline: typeof articleHeadline === "string" ? articleHeadline.trim().slice(0, 240) : "",
+        image: typeof articleImage === "string" ? articleImage.trim().slice(0, 2000) : "",
       };
     }
   }
 }
 
 /**
- * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string }>} articles
- * @returns {{ words: string[], sourceByWord: Record<string, { url: string, headline: string }> }}
+ * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string, image?: string, image_url?: string }>} articles
+ * @returns {{ words: string[], sourceByWord: Record<string, { url: string, headline: string, image: string }> }}
  */
 function extractWordPoolWithSources(articles) {
   const seen = new Set();
   const words = [];
-  /** @type {Record<string, { url: string, headline: string }>} */
+  /** @type {Record<string, { url: string, headline: string, image: string }>} */
   const sourceByWord = {};
   for (const a of articles) {
     const headline = a.headline || a.title || "";
     const link = (a.link || a.url || "").trim();
-    pushTokensFromTextWithSource(headline, seen, words, sourceByWord, link, headline);
+    const image = (a.image || a.image_url || "").trim();
+    pushTokensFromTextWithSource(headline, seen, words, sourceByWord, link, headline, image);
     const body = stripHtml(a.content || "");
-    if (body) pushTokensFromTextWithSource(body, seen, words, sourceByWord, link, headline);
+    if (body) pushTokensFromTextWithSource(body, seen, words, sourceByWord, link, headline, image);
   }
   return { words, sourceByWord };
 }
 
 /**
- * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string }>} articles
+ * @param {Array<{ headline?: string, title?: string, content?: string, link?: string, url?: string, image?: string, image_url?: string }>} articles
  * @returns {string[]}
  */
 function extractWordPoolFromArticles(articles) {
