@@ -3,3 +3,6 @@
 
 # Environment variables
 .env
+
+# Local clone / scratch (not part of monorepo games)
+dc-hot-n-cold/
